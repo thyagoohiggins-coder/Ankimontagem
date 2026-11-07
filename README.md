@@ -1,6 +1,6 @@
 # Montador de Flashcards
 
-Programa nativo para Windows (Python + Qt) para montar flashcards com **aprofundamento por trechos destacados**.
+Programa para **Windows** (Python + Qt) e app para **Android** (APK) para montar flashcards com **aprofundamento por trechos destacados**.
 Pensado para estudo rápido em **tela dividida** ao lado do navegador: tudo fica numa coluna só, em forma de linha do tempo.
 
 ## Baixar
@@ -10,6 +10,24 @@ Na página de [Releases](../../releases), baixe:
 
 > O programa não tem assinatura digital. Se aparecer "O Windows protegeu o computador",
 > clique em **Mais informações → Executar assim mesmo**.
+
+## Android
+Baixe **MontadorDeFlashcards-android-x.y.z.apk** na página de Releases e abra no celular
+(o Android pede para permitir a instalação de apps de fora da Play Store).
+- Tudo funciona por toque: selecione um trecho do BACK e toque em **🖍 Destacar** na barra que aparece embaixo;
+  **🔗 Juntar** para estruturas separadas; toque num trecho vermelho e em **↪ Abrir sub-card** para ver o painel
+  com o caminho (ex.: `initiatives → problems → thing`), **▲ Card pai** e os sub-cards.
+- **☰ → Enviar para o Anki**: gera o `.apkg` no celular e abre no **AnkiDroid** (ou compartilha/salva o arquivo).
+- **☰ → Exportar/Importar backup**: o mesmo arquivo `.json` do programa do Windows, para levar os cards de um
+  para o outro.
+- O botão Voltar do Android fecha painéis, a barra e o estudo.
+
+> **Atualizar sem perder nada:** antes de instalar uma versão nova, faça ☰ → Exportar backup. Se o Android
+> disser que o app não pode ser instalado por cima, desinstale o antigo, instale o novo e importe o backup.
+> Para as versões novas instalarem sempre por cima, cadastre uma chave de assinatura fixa nos segredos do
+> repositório (`ANDROID_KEYSTORE_B64` e `ANDROID_KEYSTORE_PASSWORD`).
+
+A interface do Android fica em `android/app/src/main/assets/www` e o app nativo em `android/`.
 
 ## Como usar
 1. **+ Novo** cria um card raiz. Escreva o **FRONT**, aperte **Tab** e escreva o **BACK**
