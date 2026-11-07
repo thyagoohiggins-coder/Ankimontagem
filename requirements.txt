@@ -1,1 +1,2 @@
 PySide6-Essentials==6.8.1
+genanki==0.13.1

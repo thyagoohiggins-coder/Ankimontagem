@@ -24,12 +24,19 @@ Na página de [Releases](../../releases), baixe:
 5. **▶ Estudar** (F5) mostra os cards do **último sub-card adicionado até o card raiz**.
    Espaço vira, ← → navegam, + / − mudam o tamanho do texto, Esc volta.
 
-### Pop-ups de sub-cards
-- **Ctrl+clique** num trecho vermelho, ou botão direito → *Abrir sub-card deste trecho*, abre o sub-card num pop-up
-  logo abaixo, como um menu.
-- No pop-up, clicar num trecho vermelho abre o próximo pop-up **descendo**; **▲ Card pai** (ou ↑) abre o card
-  anterior **subindo** até a raiz. Para começar de um sub-card e voltar: ⋯ do card → *Ver em pop-ups*.
-- **Enter** ou **✎ Editar** abre o card na linha do tempo; **Esc** ou clicar fora fecha.
+### Janelinhas de sub-cards
+- **Ctrl+clique** num trecho vermelho, ou botão direito → *Abrir sub-card deste trecho*, abre o sub-card numa
+  janelinha. Clique num trecho vermelho dela (ou nos links **↓ Sub-cards** no rodapé) para **descer**;
+  **▲ Card pai** (ou ↑) **sobe** até a raiz. Para começar de um sub-card e voltar: ⋯ do card → *Ver em pop-ups*.
+- As janelinhas podem ser **movidas** (arraste o topo), **redimensionadas** (canto inferior direito) e
+  **minimizadas** (— ou duplo clique no topo). O último tamanho fica lembrado e vale para todas.
+- **Enter** ou **✎ Editar** abre o card para editar; **Esc** ou ✕ fecha a janelinha e as abertas a partir dela.
+
+### Visualização
+☰ → **Visualização dos cards**:
+- **Linha do tempo (vertical)**: uma coluna só, boa para tela dividida.
+- **Grade em 2 colunas**: 1º card no alto à esquerda, 2º à direita, 3º abaixo do 1º, 4º abaixo do 2º, e assim
+  por diante. As janelinhas de sub-cards também se organizam nessa grade.
 
 ### Enviar para o Anki
 - ☰ → **Enviar para o Anki…** (Ctrl+E) envia o card raiz e todos os sub-cards com as mesmas cores e formatação.
@@ -37,7 +44,9 @@ Na página de [Releases](../../releases), baixe:
 - **Direto no Anki:** com o Anki aberto e o complemento **AnkiConnect** (código `2055492159`). É criado o tipo de
   nota "Montador de Flashcards" (campos Frente, Verso, Origem, Nível) e o back fica em azul Tiffany.
   Reenviar atualiza os cards já enviados, sem duplicar.
-- **Sem AnkiConnect:** *Salvar arquivo…* gera um `.txt` para importar em Arquivo → Importar (tipo Básico).
+- **Sem AnkiConnect:** *Salvar arquivo…* gera um **Pacote de Baralho do Anki (.apkg)**: dê dois cliques nele
+  (ou Arquivo → Importar) e o baralho entra com o tipo de nota, as cores, a formatação e a ordem. Importar de novo
+  atualiza os mesmos cards. Também dá para salvar como **Notas em Texto Puro (.txt)** (tipo Básico).
 
 ### Texto
 - A barra de formatação só aparece quando há texto selecionado: negrito, itálico, sublinhado, tachado,

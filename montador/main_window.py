@@ -5,8 +5,8 @@ import html
 import os
 
 from PySide6.QtCore import QPoint, QStandardPaths, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QKeySequence, QPainter, QPalette, QPen, QShortcut, QTextCursor, QTextDocumentFragment
-from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QDialog, QLineEdit, QRadioButton, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
+from PySide6.QtGui import QActionGroup, QColor, QKeySequence, QPainter, QPalette, QPen, QShortcut, QTextCursor, QTextDocumentFragment
+from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QDialog, QGridLayout, QLineEdit, QRadioButton, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
                                QLabel, QListWidget, QMainWindow, QMenu, QMessageBox, QPushButton, QScrollArea,
                                QSizePolicy, QStackedWidget, QTextBrowser, QToolButton, QTreeWidget,
                                QTreeWidgetItem, QVBoxLayout, QWidget)
@@ -45,7 +45,11 @@ class CardItem(QFrame):
         self.expanded = False
         self.setObjectName("cardItem")
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(30 + self.depth * INDENT, 5, 8, 5)
+        self.grid = win.view_mode == "grid"
+        if self.grid:
+            lay.setContentsMargins(5, 5, 5, 5)
+        else:
+            lay.setContentsMargins(30 + self.depth * INDENT, 5, 8, 5)
 
         self.box = QFrame(objectName="cardBox")
         box = QVBoxLayout(self.box)
@@ -178,6 +182,8 @@ class CardItem(QFrame):
 
     def paintEvent(self, e):
         super().paintEvent(e)
+        if self.grid:
+            return
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         p.setPen(QPen(QColor("#c9d3dc"), 2))
@@ -435,6 +441,7 @@ class MainWindow(QMainWindow):
         self.open_id: str | None = None
         self._syncing = False
         RichEditor.load_styles()
+        self.view_mode = "grid" if settings.get_json("view/mode", None) == "grid" else "timeline"
         RichEditor.hl_shadow = settings.get_int("highlight/shadow", 0) == 1
 
         self.save_timer = QTimer(self, singleShot=True, interval=500)
@@ -498,12 +505,7 @@ class MainWindow(QMainWindow):
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QFrame.NoFrame)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        holder = QWidget(objectName="timeline")
-        self.timeline = QVBoxLayout(holder)
-        self.timeline.setContentsMargins(0, 8, 0, 24)
-        self.timeline.setSpacing(0)
-        self.timeline.addStretch(1)
-        self.scroll.setWidget(holder)
+        self._new_holder()
         lay.addWidget(self.scroll, 1)
 
         self.empty = QWidget()
@@ -533,6 +535,15 @@ class MainWindow(QMainWindow):
         self.plain_action.setChecked(True)
         self.plain_action.toggled.connect(lambda on: setattr(RichEditor, "plain_paste_default", on))
         m.addAction("Restaurar formatação padrão do texto", self.reset_format)
+        vm = m.addMenu("Visualização dos cards")
+        grp = QActionGroup(vm)
+        for label, mode in (("Linha do tempo (vertical)", "timeline"),
+                            ("Grade em 2 colunas (1º à esquerda, 2º à direita, 3º abaixo do 1º…)", "grid")):
+            a = vm.addAction(label)
+            a.setCheckable(True)
+            a.setChecked(self.view_mode == mode)
+            grp.addAction(a)
+            a.triggered.connect(lambda _=False, md=mode: self.set_view_mode(md))
         self.shadow_action = m.addAction("Sombra vermelha nos trechos destacados")
         self.shadow_action.setCheckable(True)
         self.shadow_action.setChecked(RichEditor.hl_shadow)
@@ -611,6 +622,7 @@ class MainWindow(QMainWindow):
             it.deleteLater()
         self.items.clear()
         self.open_id = None
+        self._new_holder()
         self.store.current_root = rid if rid in self.store.cards else None
         has = self.store.current_root is not None
         self.empty.setVisible(not has)
@@ -626,12 +638,56 @@ class MainWindow(QMainWindow):
         self.open_card(rid, focus=False)
         self.schedule_save()
 
+    def _new_holder(self) -> None:
+        """Cria o contêiner dos cards conforme a visualização escolhida."""
+        holder = QWidget(objectName="timeline")
+        if self.view_mode == "grid":
+            self.timeline = QGridLayout(holder)
+            self.timeline.setContentsMargins(6, 8, 6, 24)
+            self.timeline.setSpacing(0)
+            self.timeline.setColumnStretch(0, 1)
+            self.timeline.setColumnStretch(1, 1)
+        else:
+            self.timeline = QVBoxLayout(holder)
+            self.timeline.setContentsMargins(0, 8, 0, 24)
+            self.timeline.setSpacing(0)
+            self.timeline.addStretch(1)
+        self.scroll.setWidget(holder)
+
+    def _relayout_grid(self) -> None:
+        """Grade: 1º card no alto à esquerda, 2º à direita, 3º abaixo do 1º, 4º abaixo do 2º..."""
+        if self.view_mode != "grid":
+            return
+        g = self.timeline
+        for it in self.items.values():
+            g.removeWidget(it)
+        for r in range(g.rowCount()):
+            g.setRowStretch(r, 0)
+        n = 0
+        for n, it in enumerate(self.items.values()):
+            g.addWidget(it, n // 2, n % 2, Qt.AlignTop)
+        g.setRowStretch(n // 2 + 1, 1)
+
     def _add_item(self, card: Card) -> CardItem:
         it = CardItem(self, card)
         it.clicked.connect(self.open_card)
-        self.timeline.insertWidget(self.timeline.count() - 1, it)
         self.items[card.id] = it
+        if self.view_mode == "grid":
+            self._relayout_grid()
+        else:
+            self.timeline.insertWidget(self.timeline.count() - 1, it)
         return it
+
+    def set_view_mode(self, mode: str) -> None:
+        if mode == self.view_mode:
+            return
+        self.view_mode = mode
+        settings.set_json("view/mode", mode)
+        keep = self.open_id
+        self.save()
+        self.show_root(self.store.current_root)
+        if keep:
+            self.open_card(keep, focus=False)
 
     def new_root(self):
         c = self.store.create_card(None)
@@ -699,6 +755,8 @@ class MainWindow(QMainWindow):
                 w = self.items.pop(cid, None)
                 if w:
                     w.setParent(None); w.deleteLater()
+            if removed:
+                self._relayout_grid()
             if removed:
                 self.statusBar().showMessage(f"Trecho removido: {len(removed)} sub-card(s) apagado(s).", 4000)
             card.back = ed.toHtml() if ed.toPlainText().strip() else ""
@@ -902,7 +960,9 @@ class AnkiDialog(QDialog):
         info = QLabel("<b>Direto no Anki:</b> deixe o Anki aberto com o complemento <b>AnkiConnect</b> "
                       "(Ferramentas → Complementos → Obter complementos → código <b>2055492159</b>). "
                       "Cards já enviados são atualizados, não duplicados.<br>"
-                      "<b>Sem AnkiConnect:</b> salve o arquivo e importe no Anki em Arquivo → Importar.",
+                      "<b>Sem AnkiConnect:</b> <i>Salvar arquivo…</i> gera um <b>Pacote de Baralho do Anki (.apkg)</b>: "
+                      "dê dois cliques nele (ou Arquivo → Importar) e o baralho entra com cores, formatação e ordem. "
+                      "Também dá para salvar como Texto (.txt).",
                       objectName="muted")
         info.setWordWrap(True)
         lay.addWidget(info)
@@ -945,12 +1005,26 @@ class AnkiDialog(QDialog):
 
     def save_file(self):
         deck, sub_first, shadow = self._opts()
-        path, _ = QFileDialog.getSaveFileName(self, "Salvar arquivo para o Anki", "flashcards-anki.txt",
-                                              "Texto para o Anki (*.txt)")
+        name = "".join(ch for ch in deck.split("::")[-1] if ch.isalnum() or ch in " -_").strip() or "flashcards"
+        apkg = "Pacote de Baralho do Anki (*.apkg)"
+        txt = "Notas em Texto Puro (*.txt)"
+        path, chosen = QFileDialog.getSaveFileName(self, "Salvar arquivo para o Anki", f"{name}.apkg", f"{apkg};;{txt}")
         if not path:
             return
-        n = anki.export_txt(self.win.store, self.root_id, deck, sub_first, shadow, path)
-        QMessageBox.information(self, "Enviar para o Anki",
-                                f"{n} card(s) salvos. No Anki: Arquivo → Importar, escolha o arquivo e o tipo de nota "
-                                "“Básico”. O HTML com as cores já vem ativado.")
+        as_txt = chosen == txt or path.lower().endswith(".txt")
+        if not as_txt and not path.lower().endswith(".apkg"):
+            path += ".apkg"
+        try:
+            if as_txt:
+                n = anki.export_txt(self.win.store, self.root_id, deck, sub_first, shadow, path)
+                msg = (f"{n} card(s) salvos. No Anki: Arquivo → Importar, escolha o arquivo e o tipo de nota "
+                       "“Básico”. O HTML com as cores já vem ativado.")
+            else:
+                n = anki.export_apkg(self.win.store, self.root_id, deck, sub_first, shadow, path)
+                msg = (f"{n} card(s) salvos em “{os.path.basename(path)}”. Dê dois cliques no arquivo (ou no Anki: "
+                       "Arquivo → Importar) para adicionar o baralho “" + deck + "”.")
+        except Exception as exc:
+            QMessageBox.warning(self, "Enviar para o Anki", f"Não foi possível salvar: {exc}")
+            return
+        QMessageBox.information(self, "Enviar para o Anki", msg)
         self.accept()

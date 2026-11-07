@@ -36,6 +36,26 @@ class AnkiTest(unittest.TestCase):
         self.assertEqual([c.front for c in anki.ordered_cards(s, r.id, True)], ["b", "a1", "a", "raiz"])
         self.assertEqual([c.front for c in anki.ordered_cards(s, r.id, False)], ["raiz", "a", "a1", "b"])
 
+    def test_apkg_order_and_model(self):
+        import json
+        import sqlite3
+        import tempfile
+        import zipfile
+        s = Store()
+        r = s.create_card(None, "raiz")
+        a = s.create_card(r.id, "a", snippet="a")
+        s.create_card(a.id, "a1", snippet="a1")
+        tmp = tempfile.mkdtemp()
+        path = os.path.join(tmp, "x.apkg")
+        self.assertEqual(anki.export_apkg(s, r.id, "Montador::X", True, False, path), 3)
+        zipfile.ZipFile(path).extract("collection.anki2", tmp)
+        db = sqlite3.connect(os.path.join(tmp, "collection.anki2"))
+        rows = db.execute("select n.flds from notes n join cards c on c.nid=n.id order by c.due").fetchall()
+        self.assertEqual([f[0].split("\x1f")[0] for f in rows], ["a1", "a", "raiz"])
+        models = json.loads(db.execute("select models from col").fetchone()[0])
+        self.assertEqual([m["name"] for m in models.values()], [anki.MODEL])
+        db.close()
+
 
 if __name__ == "__main__":
     unittest.main()

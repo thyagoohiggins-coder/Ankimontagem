@@ -236,3 +236,33 @@ def export_txt(store: Store, root_id: str, deck: str, subcards_first: bool, shad
     with open(path, "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
     return len(cards)
+
+
+# ====================================================================== pacote .apkg
+MODEL_ID = 1730946513      # fixo: reimportar atualiza o mesmo tipo de nota
+
+
+def _deck_id(name: str) -> int:
+    import hashlib
+    return (1 << 30) + int(hashlib.md5(name.encode("utf-8")).hexdigest()[:7], 16)
+
+
+def export_apkg(store: Store, root_id: str, deck: str, subcards_first: bool, shadow: bool, path: str) -> int:
+    """Pacote de Baralho do Anki (.apkg): abrir com dois cliques importa baralho, tipo de nota, cores e ordem.
+    Reimportar o mesmo card atualiza a nota em vez de duplicar (mesmo GUID)."""
+    import genanki
+
+    model = genanki.Model(
+        MODEL_ID, MODEL,
+        fields=[{"name": f} for f in FIELDS],
+        templates=[{"name": "Cartão 1", "qfmt": FRONT_TMPL, "afmt": BACK_TMPL}],
+        css=CSS)
+    d = genanki.Deck(_deck_id(deck), deck)
+    cards = ordered_cards(store, root_id, subcards_first)
+    for i, c in enumerate(cards, 1):
+        f = note_fields(store, c, shadow)
+        note = genanki.Note(model=model, fields=[f[k] for k in FIELDS], tags=["montador-flashcards"],
+                            guid=genanki.guid_for("montador", c.id), due=i)
+        d.add_note(note)
+    genanki.Package(d).write_to_file(path)
+    return len(cards)

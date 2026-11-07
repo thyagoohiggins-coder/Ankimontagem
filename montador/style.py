@@ -46,7 +46,11 @@ QTextEdit#backEditor, QTextBrowser#backView { color: #0ABAB5; }
 #formatBar QToolButton#hlButton { color: #e11d2e; }
 #formatBar QToolButton#hlButton:hover { background: #fde4e6; }
 
-#cardPopup { background: white; border: 1px solid #b9c6d0; border-radius: 10px; }
+#cardPopup { background: white; border: 1px solid #9fb0bf; }
+#popupHeader { background: #eef3f6; border-bottom: 1px solid #dde3e9; }
+#popupBtn { border: none; border-radius: 5px; padding: 2px 7px; color: #4b5763; }
+#popupBtn:hover { background: #dde5eb; }
+#subLinks { padding: 2px 0; }
 #emptyMsg { color: #4b5763; font-size: 11pt; padding: 20px; }
 #studyCard { background: white; border: 1px solid #e1e6eb; border-radius: 14px; }
 #studyProgress { font-weight: 700; color: #4b5763; }
