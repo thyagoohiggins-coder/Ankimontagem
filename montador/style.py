@@ -51,6 +51,7 @@ QTextEdit#backEditor, QTextBrowser#backView { color: #0ABAB5; }
 #popupBtn { border: none; border-radius: 5px; padding: 2px 7px; color: #4b5763; }
 #popupBtn:hover { background: #dde5eb; }
 #subLinks { padding: 2px 0; }
+#popupPath { font-size: 9pt; }
 #emptyMsg { color: #4b5763; font-size: 11pt; padding: 20px; }
 #studyCard { background: white; border: 1px solid #e1e6eb; border-radius: 14px; }
 #studyProgress { font-weight: 700; color: #4b5763; }

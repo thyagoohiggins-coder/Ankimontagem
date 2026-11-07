@@ -8,7 +8,7 @@ from __future__ import annotations
 import html
 
 from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QGuiApplication, QPalette
+from PySide6.QtGui import QColor, QFont, QGuiApplication, QPalette, QTextDocument
 from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QPushButton, QSizeGrip, QTextBrowser, QToolButton,
                                QVBoxLayout, QWidget)
 
@@ -19,6 +19,44 @@ from .model import HL_PREFIX
 DEFAULT_SIZE = QSize(400, 430)
 MIN_SIZE = QSize(260, 200)
 GAP = 10
+EDGE = 4          # borda para redimensionar puxando qualquer lado
+
+
+def key_term(card) -> str:
+    """Palavra que identifica o card no caminho: a palavra sublinhada do FRONT; senão a palavra em negrito
+    (se o negrito não for o texto todo); senão o trecho que originou o card; senão o começo do FRONT."""
+    doc = QTextDocument()
+    doc.setHtml(card.front or "")
+    underlined, bold, total = [], [], 0
+    block = doc.begin()
+    while block.isValid():
+        it = block.begin()
+        while not it.atEnd():
+            frag = it.fragment()
+            f = frag.charFormat()
+            t = " ".join(frag.text().split())
+            if t:
+                total += len(t)
+                if not f.anchorHref():
+                    if f.fontUnderline():
+                        underlined.append(t)
+                    if f.fontWeight() > QFont.Normal:
+                        bold.append(t)
+            it += 1
+        block = block.next()
+    if underlined:
+        return underlined[0][:30]
+    if bold and sum(len(t) for t in bold) < total * 0.8:
+        return bold[0][:30]
+    if card.snippet:
+        return card.snippet[:30]
+    words = doc.toPlainText().split()
+    return " ".join(words[:3]) + ("…" if len(words) > 3 else "")
+
+
+def card_path(store, card_id: str) -> str:
+    """Endereço do card a partir da raiz, ex.: initiatives → problems → thing."""
+    return " → ".join(key_term(c) for c in store.path(card_id))
 
 
 def remembered_size() -> QSize:
@@ -38,6 +76,10 @@ class _Header(QFrame):
 
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
+            wh = self.popup.windowHandle()
+            # movimento nativo do sistema: não “escapa” do mouse ao arrastar rápido
+            if wh is not None and wh.startSystemMove():
+                return
             self._drag = e.globalPosition().toPoint() - self.popup.frameGeometry().topLeft()
         super().mousePressEvent(e)
 
@@ -73,7 +115,8 @@ class CardPopup(QFrame):
         depth = s.depth(card_id)
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(1, 1, 1, 1)
+        outer.setContentsMargins(EDGE, EDGE, EDGE, EDGE)
+        self.setMouseTracking(True)
         outer.setSpacing(0)
 
         # ---- topo (mover / minimizar / fechar)
@@ -81,18 +124,22 @@ class CardPopup(QFrame):
         hl = QHBoxLayout(self.header)
         hl.setContentsMargins(12, 6, 6, 6)
         hl.setSpacing(4)
-        if depth:
-            meta = (f"NÍVEL {depth} · de <span style='color:{HL_RED};font-weight:600'>"
-                    f"“{html.escape(self.card.snippet[:36])}”</span>")
-        else:
-            meta = "🌳 CARD RAIZ"
-        m = QLabel(meta, objectName="cardMeta")
+        path = card_path(s, card_id)
+        terms = path.split(" → ")
+        shown = terms if len(terms) <= 4 else terms[:1] + ["…"] + terms[-2:]
+        meta = " <span style='color:#a5afb9'>→</span> ".join(
+            f"<span style='color:{HL_RED if i == len(shown) - 1 and depth else '#4b5763'};font-weight:600'>"
+            f"{html.escape(t)}</span>" for i, t in enumerate(shown))
+        m = QLabel(("🌳 " if not depth else "") + meta, objectName="popupPath")
         m.setTextFormat(Qt.RichText)
+        m.setToolTip(path)
+        m.setAttribute(Qt.WA_TransparentForMouseEvents)
         hl.addWidget(m, 1)
         n = s.direct_count(card_id)
         badge = QLabel(str(n), objectName="badge")
         badge.setProperty("zero", n == 0)
         badge.setToolTip("Trechos destacados no back deste card")
+        badge.setAttribute(Qt.WA_TransparentForMouseEvents)
         hl.addWidget(badge)
         self.min_btn = QToolButton(objectName="popupBtn")
         self.min_btn.setText("—")
@@ -221,6 +268,43 @@ class CardPopup(QFrame):
         self.move(x, y)
         if self.chain_origin is None:
             self.chain_origin = QPoint(x, y)
+
+    # ---------- redimensionar pelas bordas ----------
+    def _edges(self, pos: QPoint):
+        m = EDGE + 3
+        e = Qt.Edge(0)
+        if pos.x() <= m: e |= Qt.LeftEdge
+        if pos.x() >= self.width() - m: e |= Qt.RightEdge
+        if pos.y() <= m: e |= Qt.TopEdge
+        if pos.y() >= self.height() - m: e |= Qt.BottomEdge
+        return e
+
+    def mouseMoveEvent(self, e):
+        ed = self._edges(e.position().toPoint())
+        if ed in (Qt.LeftEdge | Qt.TopEdge, Qt.RightEdge | Qt.BottomEdge):
+            self.setCursor(Qt.SizeFDiagCursor)
+        elif ed in (Qt.RightEdge | Qt.TopEdge, Qt.LeftEdge | Qt.BottomEdge):
+            self.setCursor(Qt.SizeBDiagCursor)
+        elif ed & (Qt.LeftEdge | Qt.RightEdge):
+            self.setCursor(Qt.SizeHorCursor)
+        elif ed & (Qt.TopEdge | Qt.BottomEdge):
+            self.setCursor(Qt.SizeVerCursor)
+        else:
+            self.unsetCursor()
+        super().mouseMoveEvent(e)
+
+    def mousePressEvent(self, e):
+        ed = self._edges(e.position().toPoint())
+        if e.button() == Qt.LeftButton and ed and not self.minimized:
+            wh = self.windowHandle()
+            if wh is not None and wh.startSystemResize(ed):
+                return
+        super().mousePressEvent(e)
+
+    def mouseReleaseEvent(self, e):
+        super().mouseReleaseEvent(e)
+        if not self.minimized:
+            self._remember_size()
 
     # ---------- ações ----------
     def toggle_minimized(self) -> None:

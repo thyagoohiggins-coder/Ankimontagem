@@ -24,6 +24,12 @@ class AnkiTest(unittest.TestCase):
         self.assertNotIn("hl:abc", out)
         self.assertNotIn("<style", out)
 
+    def test_highlight_has_single_underline(self):
+        out = anki.qt_html_to_anki(QT_HTML)
+        inner = out.split('class="hl"', 1)[1].split("</span>", 1)[0]
+        self.assertEqual(inner.count("text-decoration"), 2)   # só no span .hl: underline + cor
+        self.assertNotIn("Nível", anki.FRONT_TMPL)
+
     def test_plain_front(self):
         self.assertEqual(anki.qt_html_to_anki("chloro &amp; phyll"), "chloro &amp; phyll")
 

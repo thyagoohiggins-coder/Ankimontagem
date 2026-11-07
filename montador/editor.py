@@ -74,6 +74,8 @@ class RichEditor(QTextEdit):
     openChildRequested = Signal(str, QPoint)  # id do sub-card, posição na tela
     removeHighlightRequested = Signal(str)   # id do sub-card
     formatSelection = Signal(object)         # editor com seleção (mostrar barra)
+    pendingChanged = Signal(object)          # partes de uma estrutura separada (ex.: got … back)
+    joinRequested = Signal(object)
     focusLost = Signal(object)
 
     plain_paste_default = True               # configuração global "Colar sem formatação"
@@ -131,6 +133,7 @@ class RichEditor(QTextEdit):
         self.is_back = is_back
         self.base_color = QColor(TIFFANY if is_back else FRONT_COLOR)
         self._force_plain = False
+        self.pending: list[QTextCursor] = []   # partes já escolhidas de uma estrutura separada
         self.setAcceptRichText(True)
         self.setTabChangesFocus(True)
         self.setFrameShape(QFrame.NoFrame)
@@ -324,12 +327,77 @@ class RichEditor(QTextEdit):
         cur = self.textCursor()
         return bool(self._anchor_ranges(cur.selectionStart(), cur.selectionEnd()))
 
-    def apply_highlight(self, child_id: str) -> None:
+    # ---------- estruturas separadas (ex.: "got … back") ----------
+    def _overlaps(self, a: int, b: int) -> bool:
+        if self._anchor_ranges(a, b):
+            return True
+        return any(p.selectionStart() < b and a < p.selectionEnd() for p in self.pending)
+
+    def join_part(self) -> str:
+        """Guarda a seleção atual como uma parte; a próxima seleção destacada se junta a ela."""
         cur = self.textCursor()
-        cur.mergeCharFormat(highlight_format(HL_PREFIX + child_id))
+        if not cur.hasSelection() or not cur.selectedText().strip():
+            return "Selecione a primeira parte (ex.: “got”) e clique em 🔗 Juntar."
+        if self._overlaps(cur.selectionStart(), cur.selectionEnd()):
+            return "Esse trecho já está destacado ou já foi escolhido."
+        self.pending.append(QTextCursor(cur))
+        self.pending.sort(key=lambda c: c.selectionStart())
+        cur.clearSelection()
+        self.setTextCursor(cur)
+        self._refresh_pending_marks()
+        self.pendingChanged.emit(self)
+        return (f"🔗 {self.pending_text()} — agora selecione a outra parte (ex.: “back”) e aperte Ctrl+D. "
+                "Esc cancela.")
+
+    def clear_pending(self) -> None:
+        if self.pending:
+            self.pending = []
+            self._refresh_pending_marks()
+            self.pendingChanged.emit(self)
+
+    def _refresh_pending_marks(self) -> None:
+        sels = []
+        for c in self.pending:
+            es = QTextEdit.ExtraSelection()
+            es.cursor = c
+            f = QTextCharFormat()
+            f.setBackground(QColor(225, 29, 46, 30))
+            f.setFontUnderline(True)
+            f.setUnderlineStyle(QTextCharFormat.DashUnderline)
+            f.setUnderlineColor(QColor(HL_RED))
+            es.format = f
+            sels.append(es)
+        self.setExtraSelections(sels)
+
+    def pending_text(self) -> str:
+        return " … ".join(" ".join(c.selectedText().replace("\u2029", " ").split()) for c in self.pending)
+
+    def highlight_parts(self) -> list[QTextCursor]:
+        """Partes a destacar juntas: as já escolhidas + a seleção atual."""
+        parts = [c for c in self.pending if c.hasSelection()]
+        cur = self.textCursor()
+        if cur.hasSelection() and cur.selectedText().strip() and not any(
+                p.selectionStart() == cur.selectionStart() and p.selectionEnd() == cur.selectionEnd() for p in parts):
+            parts.append(QTextCursor(cur))
+        return sorted(parts, key=lambda c: c.selectionStart())
+
+    def parts_overlap_highlight(self, parts: list[QTextCursor]) -> bool:
+        return any(self._anchor_ranges(c.selectionStart(), c.selectionEnd()) for c in parts)
+
+    def apply_highlight(self, child_id: str, parts: list[QTextCursor] | None = None) -> None:
+        parts = parts or [QTextCursor(self.textCursor())]
+        edit = QTextCursor(self.document())
+        edit.beginEditBlock()
+        for c in parts:
+            c.mergeCharFormat(highlight_format(HL_PREFIX + child_id))
+        edit.endEditBlock()
+        self.pending = []
+        self._refresh_pending_marks()
+        cur = self.textCursor()
         cur.clearSelection()
         self.setTextCursor(cur)
         self._adjust_typing_format()
+        self.pendingChanged.emit(self)
 
     def unhighlight(self, predicate) -> bool:
         """Remove o destaque dos trechos cujo id satisfaz ``predicate``."""
@@ -379,6 +447,10 @@ class RichEditor(QTextEdit):
         if ctrl and k == Qt.Key_Space: return self.clear_format()
         if ctrl and not shift and k == Qt.Key_D and self.is_back:
             return self.highlightRequested.emit(self)
+        if ctrl and not shift and k == Qt.Key_J and self.is_back:
+            return self.joinRequested.emit(self)
+        if k == Qt.Key_Escape and self.pending:
+            return self.clear_pending()
         super().keyPressEvent(e)
 
     def mouseMoveEvent(self, e):
@@ -412,8 +484,13 @@ class RichEditor(QTextEdit):
             return a
 
         if self.is_back:
-            hl = act("🖍  Destacar como desconhecido", lambda: self.highlightRequested.emit(self), "Ctrl+D", has_sel)
+            label = f"🖍  Destacar “{self.pending_text()} …”" if self.pending else "🖍  Destacar como desconhecido"
+            hl = act(label, lambda: self.highlightRequested.emit(self), "Ctrl+D", has_sel or bool(self.pending))
             f = hl.font(); f.setBold(True); hl.setFont(f)
+            act("🔗  Juntar com outro trecho (estrutura separada, ex.: got … back)",
+                lambda: self.joinRequested.emit(self), "Ctrl+J", has_sel)
+            if self.pending:
+                act("Cancelar junção", self.clear_pending, "Esc")
         if child:
             act("↪  Abrir sub-card deste trecho", lambda: self.openChildRequested.emit(child, e.globalPos()))
             act("✕  Remover este destaque", lambda: self.removeHighlightRequested.emit(child))
@@ -528,6 +605,9 @@ class FormatBar(QFrame):
 
         self.hl_btn = btn("🖍 Destacar", "Destacar como desconhecido e criar sub-card (Ctrl+D)",
                           lambda e: e.highlightRequested.emit(e), True, obj="hlButton")
+        self.join_btn = btn("🔗 Juntar", "Estrutura separada (ex.: phrasal verb “got … back”): guarda este trecho; "
+                            "depois selecione a outra parte e destaque (Ctrl+J)",
+                            lambda e: e.joinRequested.emit(e), obj="joinButton")
         btn("B", "Negrito (Ctrl+B)", RichEditor.toggle_bold, True)
         i = btn("I", "Itálico (Ctrl+I)", RichEditor.toggle_italic)
         f = i.font(); f.setItalic(True); i.setFont(f)
@@ -550,7 +630,14 @@ class FormatBar(QFrame):
     def show_for(self, editor: RichEditor) -> None:
         self.editor = editor
         self.hl_btn.setVisible(editor.is_back)
-        self.hl_btn.setText("🖍 Destacar" if self.parentWidget().width() >= 430 else "🖍")
+        self.join_btn.setVisible(editor.is_back)
+        wide = self.parentWidget().width() >= 470
+        n = len(editor.pending)
+        if n:
+            self.hl_btn.setText(f"🖍 Destacar ({n + 1} partes)" if wide else f"🖍 {n + 1}")
+        else:
+            self.hl_btn.setText("🖍 Destacar" if wide else "🖍")
+        self.join_btn.setText("🔗 Juntar" if wide else "🔗")
         self.size_btn.setText(f"{editor.current_size():g}")
         self.size_btn.setMenu(size_menu(self, lambda v: (editor.set_size(v), self.size_btn.setText(f"{v:g}")),
                                         editor.current_size()))

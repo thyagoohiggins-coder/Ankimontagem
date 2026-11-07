@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QDialog, Q
 from . import anki, settings
 from .editor import FRONT_COLOR, HL_RED, TIFFANY, FormatBar, RichEditor, apply_highlight_style, default_font
 from .model import Card, Store
-from .popup import CardPopup
+from .popup import CardPopup, card_path
 
 APP_NAME = "Montador de Flashcards"
 TEAL = "#0a8f8b"
@@ -123,6 +123,8 @@ class CardItem(QFrame):
             ed.formatSelection.connect(win.on_selection)
             ed.focusLost.connect(win.on_editor_focus_lost)
         self.back.highlightRequested.connect(lambda e: win.highlight(self, e))
+        self.back.joinRequested.connect(win.join_part)
+        self.back.pendingChanged.connect(win.on_selection)
         self.back.openChildRequested.connect(win.show_card_popup)
         self.back.removeHighlightRequested.connect(win.remove_highlight)
         self.front.textChanged.connect(self._front_changed)
@@ -312,9 +314,8 @@ class StudyPage(QWidget):
         n = len(self.cards)
         self.progress.setText(f"{self.i + 1} / {n}")
         self.fill.setGeometry(0, 0, int(self.bar.width() * (self.i + 1) / n), 4)
-        depth = self.win.store.depth(c.id)
-        if depth:
-            self.origin.setText(f"Nível {depth} · trecho <span style='color:{HL_RED};font-weight:600'>“{html.escape(c.snippet)}”</span>")
+        if self.win.store.depth(c.id):
+            self.origin.setText(f"<span style='color:{HL_RED};font-weight:600'>{html.escape(card_path(self.win.store, c.id))}</span>")
         else:
             self.origin.setText("🌳 Card raiz")
         self._set(self.front, c.front, "(sem front)")
@@ -766,20 +767,29 @@ class MainWindow(QMainWindow):
         self.schedule_save()
 
     def highlight(self, item: CardItem, ed: RichEditor):
-        cur = ed.textCursor()
-        text = " ".join(cur.selectedText().replace(" ", " ").split())
-        if not cur.hasSelection() or not text:
+        parts = ed.highlight_parts()
+        texts = [" ".join(c.selectedText().replace(chr(0x2029), " ").split()) for c in parts]
+        texts = [t for t in texts if t]
+        if not texts:
             self.statusBar().showMessage("Selecione no BACK o trecho que você não conhece e aperte Ctrl+D.", 4000)
             return
-        if ed.selection_has_highlight():
+        if ed.parts_overlap_highlight(parts):
             self.statusBar().showMessage("Esse trecho já está destacado.", 3000)
             return
-        child = self.store.create_card(item.card.id, front=html.escape(text), snippet=text)
+        snippet = " … ".join(texts)            # estrutura separada: “got … back”
+        front = " ".join(texts)                # front do sub-card: “got back”
+        text = snippet
+        child = self.store.create_card(item.card.id, front=html.escape(front), snippet=snippet)
         new_item = self._add_item(child)
-        ed.apply_highlight(child.id)          # dispara back_changed → salva e atualiza contagens
+        ed.apply_highlight(child.id, parts)   # dispara back_changed → salva e atualiza contagens
         new_item.flash()
         n = self.store.direct_count(item.card.id)
         self.statusBar().showMessage(f"🖍 “{text[:40]}” virou um sub-card ({n} neste card). Alt+↓ para abri-lo.", 5000)
+
+    def join_part(self, ed: RichEditor):
+        self.statusBar().showMessage(ed.join_part(), 8000)
+        if ed.pending:
+            self.format_bar.show_for(ed)
 
     def remove_highlight(self, child_id: str):
         child = self.store.get(child_id)
@@ -812,7 +822,7 @@ class MainWindow(QMainWindow):
 
     # ---------- barra de formatação ----------
     def on_selection(self, ed: RichEditor):
-        if ed.textCursor().hasSelection() and ed.hasFocus():
+        if (ed.textCursor().hasSelection() or ed.pending) and ed.hasFocus():
             self.format_bar.show_for(ed)
         elif self.format_bar.editor is ed:
             self.format_bar.hide()

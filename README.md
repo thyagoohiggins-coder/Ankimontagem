@@ -24,11 +24,18 @@ Na página de [Releases](../../releases), baixe:
 5. **▶ Estudar** (F5) mostra os cards do **último sub-card adicionado até o card raiz**.
    Espaço vira, ← → navegam, + / − mudam o tamanho do texto, Esc volta.
 
+### Estruturas separadas (ex.: phrasal verb “got … back”)
+- Em *I **got** my earphones **back***: selecione “got” e clique em **🔗 Juntar** (aparece na barra ao selecionar,
+  ou Ctrl+J / botão direito). Depois selecione “back” e destaque (**Ctrl+D**). As partes viram **um único
+  sub-card** com front “got back”. Dá para juntar mais de duas partes; **Esc** cancela.
+
 ### Janelinhas de sub-cards
 - **Ctrl+clique** num trecho vermelho, ou botão direito → *Abrir sub-card deste trecho*, abre o sub-card numa
   janelinha. Clique num trecho vermelho dela (ou nos links **↓ Sub-cards** no rodapé) para **descer**;
   **▲ Card pai** (ou ↑) **sobe** até a raiz. Para começar de um sub-card e voltar: ⋯ do card → *Ver em pop-ups*.
-- As janelinhas podem ser **movidas** (arraste o topo), **redimensionadas** (canto inferior direito) e
+- O topo mostra o **caminho** do card a partir da raiz, ex.: `initiatives → problems → thing`
+  (a palavra sublinhada do front, ou o trecho destacado).
+- As janelinhas podem ser **movidas** (arraste o topo), **redimensionadas** (qualquer borda ou o canto) e
   **minimizadas** (— ou duplo clique no topo). O último tamanho fica lembrado e vale para todas.
 - **Enter** ou **✎ Editar** abre o card para editar; **Esc** ou ✕ fecha a janelinha e as abertas a partir dela.
 
@@ -43,7 +50,7 @@ Na página de [Releases](../../releases), baixe:
 - Escolha a ordem: **sub-cards primeiro, do último até o card raiz** (padrão) ou o card raiz primeiro.
 - **Direto no Anki:** com o Anki aberto e o complemento **AnkiConnect** (código `2055492159`). É criado o tipo de
   nota "Montador de Flashcards" (campos Frente, Verso, Origem, Nível) e o back fica em azul Tiffany.
-  Reenviar atualiza os cards já enviados, sem duplicar.
+  Reenviar atualiza os cards já enviados, sem duplicar. Os tamanhos de fonte são os mesmos do programa.
 - **Sem AnkiConnect:** *Salvar arquivo…* gera um **Pacote de Baralho do Anki (.apkg)**: dê dois cliques nele
   (ou Arquivo → Importar) e o baralho entra com o tipo de nota, as cores, a formatação e a ordem. Importar de novo
   atualiza os mesmos cards. Também dá para salvar como **Notas em Texto Puro (.txt)** (tipo Básico).

@@ -23,15 +23,14 @@ FIELDS = ["Frente", "Verso", "Origem", "Nivel"]
 TIFFANY = "#0ABAB5"
 HL_RED = "#e11d2e"
 
-CSS = """.card { font-family: "Segoe UI", Arial, sans-serif; font-size: 20px; color: #1f2933;
+CSS = """.card { font-family: "Segoe UI", Arial, sans-serif; font-size: 11.5pt; color: #1f2933;
   background: #ffffff; text-align: left; line-height: 1.45; }
 .verso { color: #0ABAB5; }
 .origem { color: #8a96a3; font-size: 13px; margin-bottom: 8px; }
 .origem b { color: #e11d2e; }
-.hl { color: #e11d2e; text-decoration: underline; text-decoration-color: #e11d2e; }
+.hl { color: #e11d2e; }
 """
-FRONT_TMPL = """{{#Origem}}<div class="origem">Nível {{Nivel}} · trecho <b>{{Origem}}</b></div>{{/Origem}}
-<div class="frente">{{Frente}}</div>"""
+FRONT_TMPL = """<div class="frente">{{Frente}}</div>"""
 BACK_TMPL = """{{FrontSide}}
 <hr id="answer">
 <div class="verso">{{Verso}}</div>"""
@@ -53,8 +52,8 @@ def _clean_style(style: str, drop_bg: bool) -> str:
             continue
         if drop_bg and k == "background-color":
             continue
-        if k == "font-size" and v.replace(" ", "") in ("11.5pt", "9pt"):
-            continue   # tamanho padrão do programa: deixa o Anki usar o tamanho do card
+        if k == "font-size" and not re.fullmatch(r"[\d.]+(pt|px)", v.replace(" ", "")):
+            continue   # tamanhos relativos (x-large, em…) não seriam iguais aos do programa
         out.append(f"{k}:{v}")
     return "; ".join(out)
 
@@ -70,6 +69,7 @@ class _QtHtmlToAnki(HTMLParser):
         self.in_body = False
         self.skip = 0
         self.empty_par = False
+        self.hl_depth = 0          # dentro de um trecho destacado: um único sublinhado vermelho
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
@@ -91,6 +91,9 @@ class _QtHtmlToAnki(HTMLParser):
                 bg = "; background-color: rgba(225,29,46,0.15)" if self.shadow else ""
                 self.out.append(f'<span class="hl" style="color:{HL_RED}; text-decoration: underline; '
                                 f'text-decoration-color:{HL_RED}{bg}">')
+                self.hl_depth += 1
+                self.stack.append("/hl")
+                return
             else:
                 self.out.append(f'<a href="{html.escape(href)}">')
             self.stack.append("span" if href.startswith(HL_PREFIX) else "a")
@@ -104,6 +107,9 @@ class _QtHtmlToAnki(HTMLParser):
             return
         if tag in _INLINE:
             st = _clean_style(style, False)
+            if self.hl_depth:
+                st = "; ".join(x for x in st.split("; ")
+                               if x and not x.startswith(("text-decoration", "color", "background-color")))
             self.out.append(f'<span style="{st}">' if st else "<span>")
             self.stack.append("span")
 
@@ -118,7 +124,11 @@ class _QtHtmlToAnki(HTMLParser):
             return
         if tag in _BLOCK or tag in _INLINE or tag == "a":
             if self.stack:
-                self.out.append(f"</{self.stack.pop()}>")
+                t = self.stack.pop()
+                if t == "/hl":
+                    self.hl_depth -= 1
+                    t = "span"
+                self.out.append(f"</{t}>")
 
     def handle_data(self, data):
         if self.in_body and not self.skip:
@@ -177,6 +187,10 @@ def invoke(action: str, url: str = ANKI_URL, timeout: float = 8.0, **params):
 
 def ensure_model(url: str = ANKI_URL) -> None:
     if MODEL in invoke("modelNames", url):
+        # mantém o visual do tipo de nota em dia (ex.: sem “Nível” no front)
+        invoke("updateModelTemplates", url,
+               model={"name": MODEL, "templates": {"Cartão 1": {"Front": FRONT_TMPL, "Back": BACK_TMPL}}})
+        invoke("updateModelStyling", url, model={"name": MODEL, "css": CSS})
         return
     invoke("createModel", url, modelName=MODEL, inOrderFields=FIELDS, css=CSS,
            cardTemplates=[{"Name": "Cartão 1", "Front": FRONT_TMPL, "Back": BACK_TMPL}])
@@ -228,9 +242,6 @@ def export_txt(store: Store, root_id: str, deck: str, subcards_first: bool, shad
     for c in cards:
         f = note_fields(store, c, shadow)
         front = f["Frente"]
-        if f["Origem"]:
-            front = (f'<div style="color:#8a96a3; font-size:13px">Nível {f["Nivel"]} · trecho '
-                     f'<b style="color:{HL_RED}">{f["Origem"]}</b></div>') + front
         back = f'<div style="color:{TIFFANY}">{f["Verso"]}</div>'
         lines.append("\t".join([cell(front), cell(back), "montador-flashcards"]))
     with open(path, "w", encoding="utf-8") as fh:
