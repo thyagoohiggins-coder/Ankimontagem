@@ -8,7 +8,7 @@ from PySide6.QtCore import QPoint, QStandardPaths, Qt, QTimer, Signal
 from PySide6.QtGui import QActionGroup, QColor, QKeySequence, QPainter, QPalette, QPen, QShortcut, QTextCursor, QTextDocumentFragment
 from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QDialog, QGridLayout, QLineEdit, QRadioButton, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
                                QLabel, QListWidget, QMainWindow, QMenu, QMessageBox, QPushButton, QScrollArea,
-                               QSizePolicy, QStackedWidget, QTextBrowser, QToolButton, QTreeWidget,
+                               QSizePolicy, QSpinBox, QStackedWidget, QTextBrowser, QToolButton, QTreeWidget,
                                QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from . import anki, settings
@@ -971,9 +971,26 @@ class AnkiDialog(QDialog):
         self.deck_note = QLabel("", objectName="muted")
         self.deck_note.setWordWrap(True)
         lay.addWidget(self.deck_note)
+        size_row = QHBoxLayout()
+        size_row.addWidget(QLabel("Tamanho do texto normal no Anki:"))
+        self.base_px = QSpinBox()
+        self.base_px.setRange(10, 120)
+        self.base_px.setSuffix(" px")
+        self.base_px.setValue(settings.get_int("anki/base_px", 20))
+        self.base_px.setToolTip("O texto normal do card fica com este tamanho; o que você aumentou ou diminuiu no "
+                                "programa fica proporcional. Ao escolher um baralho, o programa tenta usar o mesmo "
+                                "tamanho dos outros cards dele.")
+        size_row.addWidget(self.base_px)
+        size_row.addStretch(1)
+        lay.addLayout(size_row)
         default = settings.get_json("anki/last_deck", "") or ("Montador::" + title.replace("::", " "))
         self._load_decks(False)
         self.deck.setEditText(default)
+        self.deck.currentTextChanged.connect(lambda _: self._detect_size_later.start())
+        self._detect_size_later = QTimer(self, singleShot=True, interval=500)
+        self._detect_size_later.timeout.connect(self._detect_size)
+        if self._anki_online:
+            self._detect_size()
 
         lay.addWidget(QLabel("Ordem dos cards novos no Anki:"))
         self.sub_first = QRadioButton("Sub-cards primeiro: do último sub-card até o card raiz")
@@ -1012,10 +1029,12 @@ class AnkiDialog(QDialog):
         """Lista os baralhos do Anki (AnkiConnect) e os usados antes neste programa."""
         current = self.deck.currentText()
         names: list[str] = []
+        self._anki_online = False
         try:
             QApplication.setOverrideCursor(Qt.WaitCursor)
             names = sorted(anki.invoke("deckNames", timeout=1.5 if not user_asked else 5),
                            key=str.lower)
+            self._anki_online = True
             self.deck_note.setText(f"{len(names)} baralho(s) encontrados no Anki.")
         except anki.AnkiError:
             self.deck_note.setText("Para listar os seus baralhos, abra o Anki com o AnkiConnect e clique em ↻. "
@@ -1030,7 +1049,21 @@ class AnkiDialog(QDialog):
         if current:
             self.deck.setEditText(current)
 
+    def _detect_size(self) -> None:
+        """Usa o tamanho de texto dos outros cards do baralho escolhido (se o Anki estiver aberto)."""
+        if not self._anki_online:
+            return
+        try:
+            px = anki.detect_base_px(self.deck.currentText().strip())
+        except anki.AnkiError:
+            return
+        if px:
+            self.base_px.setValue(px)
+            self.deck_note.setText(f"Tamanho do texto igual ao dos outros cards deste baralho: {px} px.")
+
     def _opts(self):
+        settings.set_value("anki/base_px", self.base_px.value())
+        anki.BASE_PX = self.base_px.value()
         settings.set_value("anki/subcards_first", 1 if self.sub_first.isChecked() else 0)
         deck = self.deck.currentText().strip() or "Montador"
         settings.set_json("anki/last_deck", deck)

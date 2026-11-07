@@ -52,7 +52,10 @@ Na página de [Releases](../../releases), baixe:
 - Escolha a ordem: **sub-cards primeiro, do último até o card raiz** (padrão) ou o card raiz primeiro.
 - **Direto no Anki:** com o Anki aberto e o complemento **AnkiConnect** (código `2055492159`). É criado o tipo de
   nota "Montador de Flashcards" (campos Frente e Verso) e o back fica em azul Tiffany.
-  Reenviar atualiza os cards já enviados, sem duplicar. Os tamanhos de fonte são os mesmos do programa.
+  Reenviar atualiza os cards já enviados, sem duplicar.
+- **Tamanho do texto:** o texto normal fica do tamanho escolhido em *Tamanho do texto normal no Anki* (com o Anki
+  aberto, o programa usa o mesmo tamanho dos outros cards do baralho). O que você aumentou ou diminuiu no programa
+  fica proporcional.
 - **Sem AnkiConnect:** *Salvar arquivo…* gera um **Pacote de Baralho do Anki (.apkg)**: dê dois cliques nele
   (ou Arquivo → Importar) e o baralho entra com o tipo de nota, as cores, a formatação e a ordem. Importar de novo
   atualiza os mesmos cards. Também dá para salvar como **Notas em Texto Puro (.txt)** (tipo Básico).

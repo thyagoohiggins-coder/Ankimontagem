@@ -19,7 +19,7 @@ class AnkiTest(unittest.TestCase):
         self.assertIn("font-weight:700; color:#7c3aed", out)
         self.assertIn('class="hl"', out)
         self.assertIn("text-decoration-color:#facc15", out)
-        self.assertIn("font-size:16pt", out)
+        self.assertIn("font-size:1.391em", out)   # 16pt relativo ao texto normal (11.5pt)
         self.assertNotIn("Segoe", out)
         self.assertNotIn("hl:abc", out)
         self.assertNotIn("<style", out)

@@ -2,7 +2,9 @@
 
 Dois caminhos:
 - AnkiConnect (complemento do Anki, código 2055492159): envia direto para o Anki aberto.
-- Arquivo .txt (HTML separado por tabulação) para importar em Arquivo → Importar.
+- Pacote de Baralho (.apkg) ou arquivo .txt para importar em Arquivo → Importar.
+
+Os tamanhos de fonte vão relativos (em) ao texto normal, que no Anki é BASE_PX.
 
 A ordem de envio define a ordem dos cards novos no Anki.
 """
@@ -24,13 +26,45 @@ OLD_FIELDS = ["Origem", "Nivel"]   # usados até a 2.4; removidos do tipo de not
 TIFFANY = "#0ABAB5"
 HL_RED = "#e11d2e"
 
-CSS = """.card { font-family: "Segoe UI", Arial, sans-serif; font-size: 11.5pt; color: #1f2933;
-  background: #ffffff; text-align: left; line-height: 1.45; }
-.verso { color: #0ABAB5; }
-.origem { color: #8a96a3; font-size: 13px; margin-bottom: 8px; }
-.origem b { color: #e11d2e; }
-.hl { color: #e11d2e; }
-"""
+APP_BASE_PT = 11.5     # tamanho normal do texto no programa
+BASE_PX = 20           # tamanho normal do texto no Anki (padrão do Anki); ajustável na janela de envio
+
+
+def css(base_px: int | None = None) -> str:
+    b = int(base_px or BASE_PX)
+    return (f""".card {{ font-family: "Segoe UI", Arial, sans-serif; font-size: {b}px; color: #1f2933;
+  background: #ffffff; text-align: center; line-height: 1.4; }}
+.verso {{ color: #0ABAB5; }}
+.hl {{ color: #e11d2e; }}
+""")
+
+
+def _rel_size(v: str) -> str | None:
+    """Tamanho do programa (pt/px) → em, relativo ao texto normal: no Anki fica proporcional ao baralho."""
+    m = re.fullmatch(r"([\d.]+)(pt|px)", v.replace(" ", ""))
+    if not m:
+        return None
+    pt = float(m.group(1)) * (0.75 if m.group(2) == "px" else 1)
+    em = round(pt / APP_BASE_PT, 3)
+    return None if abs(em - 1) < 0.01 else f"{em:g}em"
+
+
+def detect_base_px(deck: str, url: str | None = None) -> int | None:
+    """Tamanho do texto dos outros cards do baralho no Anki (pelo CSS do tipo de nota mais usado nele)."""
+    url = url or ANKI_URL
+    notes = invoke("findNotes", url, timeout=3, query=f'deck:"{deck}" -note:"{MODEL}"')[:30]
+    if not notes:
+        return None
+    counts: dict[str, int] = {}
+    for n in invoke("notesInfo", url, timeout=3, notes=notes):
+        if n and n.get("modelName"):
+            counts[n["modelName"]] = counts.get(n["modelName"], 0) + 1
+    if not counts:
+        return None
+    model = max(counts, key=counts.get)
+    style = invoke("modelStyling", url, timeout=3, modelName=model).get("css", "")
+    m = re.search(r"\.card\s*\{[^}]*?font-size\s*:\s*([\d.]+)px", style)
+    return int(float(m.group(1))) if m else 20
 FRONT_TMPL = """<div class="frente">{{Frente}}</div>"""
 BACK_TMPL = """{{FrontSide}}
 <hr id="answer">
@@ -53,8 +87,10 @@ def _clean_style(style: str, drop_bg: bool) -> str:
             continue
         if drop_bg and k == "background-color":
             continue
-        if k == "font-size" and not re.fullmatch(r"[\d.]+(pt|px)", v.replace(" ", "")):
-            continue   # tamanhos relativos (x-large, em…) não seriam iguais aos do programa
+        if k == "font-size":
+            v = _rel_size(v)
+            if v is None:
+                continue   # tamanho normal (ou relativo desconhecido): fica o tamanho do card no Anki
         out.append(f"{k}:{v}")
     return "; ".join(out)
 
@@ -76,7 +112,7 @@ class _QtHtmlToAnki(HTMLParser):
     def _hl_style(self) -> str:
         bg = "; background-color:rgba(225,29,46,0.15)" if self.shadow else ""
         return (f"color:{HL_RED}; text-decoration:underline; text-decoration-color:{HL_RED}; "
-                f"text-decoration-thickness:1.5px; text-underline-offset:2px{bg}")
+                f"text-decoration-thickness:0.07em; text-underline-offset:0.12em{bg}")
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
@@ -200,7 +236,7 @@ def ensure_model(url: str = ANKI_URL) -> None:
         # mantém o visual do tipo de nota em dia (ex.: sem “Nível” no front)
         invoke("updateModelTemplates", url,
                model={"name": MODEL, "templates": {"Cartão 1": {"Front": FRONT_TMPL, "Back": BACK_TMPL}}})
-        invoke("updateModelStyling", url, model={"name": MODEL, "css": CSS})
+        invoke("updateModelStyling", url, model={"name": MODEL, "css": css()})
         try:  # tira os campos antigos (Origem, Nível); AnkiConnect antigo pode não ter essa ação
             existing = invoke("modelFieldNames", url, modelName=MODEL)
             for f in OLD_FIELDS:
@@ -209,7 +245,7 @@ def ensure_model(url: str = ANKI_URL) -> None:
         except AnkiError:
             pass
         return
-    invoke("createModel", url, modelName=MODEL, inOrderFields=FIELDS, css=CSS,
+    invoke("createModel", url, modelName=MODEL, inOrderFields=FIELDS, css=css(),
            cardTemplates=[{"Name": "Cartão 1", "Front": FRONT_TMPL, "Back": BACK_TMPL}])
 
 
@@ -284,7 +320,7 @@ def export_apkg(store: Store, root_id: str, deck: str, subcards_first: bool, sha
         MODEL_ID, MODEL,
         fields=[{"name": f} for f in FIELDS],
         templates=[{"name": "Cartão 1", "qfmt": FRONT_TMPL, "afmt": BACK_TMPL}],
-        css=CSS)
+        css=css())
     deck_id = _deck_id(deck)
     try:   # baralho que já existe no Anki: usa o id real para os cards entrarem nele
         deck_id = int(invoke("deckNamesAndIds", timeout=1.5).get(deck, deck_id))
