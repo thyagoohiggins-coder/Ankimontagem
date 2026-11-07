@@ -17,7 +17,8 @@ Baixe **MontadorDeFlashcards-android-x.y.z.apk** na página de Releases e abra n
 - Tudo funciona por toque: selecione um trecho do BACK e toque em **🖍 Destacar** na barra que aparece embaixo;
   **🔗 Juntar** para estruturas separadas; toque num trecho vermelho e em **↪ Abrir sub-card** para ver o painel
   com o caminho (ex.: `initiatives → problems → thing`), **▲ Card pai** e os sub-cards.
-- **☰ → Enviar para o Anki**: gera o `.apkg` no celular e abre no **AnkiDroid** (ou compartilha/salva o arquivo).
+- **☰ → Enviar para o Anki**: escolha um dos seus baralhos do AnkiDroid (ou digite um novo); o `.apkg` é gerado
+  no celular e abre no **AnkiDroid**, entrando no baralho escolhido (ou compartilhe/salve o arquivo).
 - **☰ → Exportar/Importar backup**: o mesmo arquivo `.json` do programa do Windows, para levar os cards de um
   para o outro.
 - O botão Voltar do Android fecha painéis, a barra e o estudo.

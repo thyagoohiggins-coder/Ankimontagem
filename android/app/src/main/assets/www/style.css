@@ -132,3 +132,11 @@ ol.order { padding-left: 22px; } ol.order li { margin: 4px 0; }
 #toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 90px; z-index: 60; max-width: 92vw;
   background: #1f2933; color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 14px;
   box-shadow: 0 4px 16px rgba(0,0,0,.25); }
+
+.deck-input { width: 100%; font: inherit; font-weight: 600; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+.deck-input:focus { outline: none; border-color: var(--teal); }
+#ak-deck-note { margin: 6px 2px; }
+.deck-list { display: flex; flex-direction: column; gap: 6px; max-height: 38vh; overflow-y: auto; margin-bottom: 6px; }
+.deck-list .deck { text-align: left; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--line); background: #fff; }
+.deck-list .deck.on { border: 2px solid var(--teal); background: #e3f4f3; font-weight: 600; }
+.deck-list .ico { margin-right: 4px; }

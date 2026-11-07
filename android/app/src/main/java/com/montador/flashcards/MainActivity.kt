@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.util.Base64
@@ -16,6 +17,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.core.content.FileProvider
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 
 /**
@@ -33,6 +36,9 @@ class MainActivity : Activity() {
     companion object {
         private const val REQ_OPEN = 10
         private const val REQ_SAVE = 11
+        private const val REQ_ANKI = 12
+        private const val ANKI_PERMISSION = "com.ichi2.anki.permission.READ_WRITE_DATABASE"
+        private val ANKI_DECKS: Uri = Uri.parse("content://com.ichi2.anki.flashcards/decks")
         private const val DATA_FILE = "flashcards.json"
     }
 
@@ -143,6 +149,37 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun isAndroid(): Boolean = true
+
+        /** Baralhos do AnkiDroid: {"ok":true,"decks":[{"name","id"}]} ou {"ok":false,"reason":...}. */
+        @JavascriptInterface
+        fun ankiDecks(): String {
+            val out = JSONObject()
+            val installed = try { packageManager.getPackageInfo("com.ichi2.anki", 0); true } catch (_: Exception) { false }
+            if (!installed) return out.put("ok", false).put("reason", "missing").toString()
+            if (checkSelfPermission(ANKI_PERMISSION) != PackageManager.PERMISSION_GRANTED) {
+                return out.put("ok", false).put("reason", "permission").toString()
+            }
+            return try {
+                val decks = JSONArray()
+                contentResolver.query(ANKI_DECKS, null, null, null, null)?.use { c ->
+                    val iName = c.getColumnIndex("deck_name")
+                    val iId = c.getColumnIndex("deck_id")
+                    while (c.moveToNext()) {
+                        if (iName < 0) break
+                        decks.put(JSONObject().put("name", c.getString(iName))
+                            .put("id", if (iId >= 0) c.getLong(iId) else 0L))
+                    }
+                }
+                out.put("ok", true).put("decks", decks).toString()
+            } catch (e: Exception) {
+                out.put("ok", false).put("reason", "error").put("message", e.message ?: "").toString()
+            }
+        }
+
+        @JavascriptInterface
+        fun requestAnkiPermission() {
+            runOnUiThread { requestPermissions(arrayOf(ANKI_PERMISSION), REQ_ANKI) }
+        }
     }
 
     @Deprecated("Activity result API não é usada para manter o app sem dependências extras")
@@ -167,6 +204,14 @@ class MainActivity : Activity() {
                     }
                 }
             }
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_ANKI) {
+            val ok = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            web.evaluateJavascript("window.onAnkiPermission && onAnkiPermission($ok)", null)
         }
     }
 

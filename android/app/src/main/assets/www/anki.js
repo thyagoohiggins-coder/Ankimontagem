@@ -105,11 +105,12 @@
     SQL = await window.initSqlJs({ wasmBinary: bin });
     return SQL;
   }
-  async function buildApkg(rootId, deckName, subFirst, basePx, shadow) {
+  async function buildApkg(rootId, deckName, subFirst, basePx, shadow, realDeckId) {
     const SQLm = await sqlReady();
     const db = new SQLm.Database();
     db.run(ANKI_SCHEMA);
-    const now = Math.floor(Date.now() / 1000), did = deckId(deckName);
+    // baralho que já existe no AnkiDroid: usa o id real para os cards entrarem exatamente nele
+    const now = Math.floor(Date.now() / 1000), did = realDeckId || deckId(deckName);
     const model = JSON.parse(JSON.stringify(ANKI_MODEL));
     model.css = css(basePx); model.mod = now; model.did = did;
     model.tmpls[0].qfmt = ANKI_FRONT_TMPL; model.tmpls[0].afmt = ANKI_BACK_TMPL;
@@ -137,6 +138,65 @@
   }
   window.MontadorAnki = { toAnki, buildApkg, guidFor };
 
+  // ---------------------------------------------------------------- escolha do baralho
+  let ankiDecks = [];          // baralhos do AnkiDroid [{name, id}]
+  let ankiState = 'unknown';   // ok | permission | missing | error | browser
+  function fetchDecks() {
+    if (!M.isAndroid() || !Android.ankiDecks) { ankiState = 'browser'; return; }
+    try {
+      const r = JSON.parse(Android.ankiDecks());
+      ankiState = r.ok ? 'ok' : r.reason;
+      ankiDecks = r.ok ? r.decks.filter(d => d.name).sort((a, b) => a.name.localeCompare(b.name)) : [];
+    } catch (e) { ankiState = 'error'; ankiDecks = []; }
+  }
+  function renderDecks() {
+    const box = document.querySelector('#ak-decks'), note = document.querySelector('#ak-deck-note');
+    const input = document.querySelector('#ak-deck');
+    if (!box) return;
+    fetchDecks();
+    const recent = (M.settings.recentDecks || []).filter(d => !ankiDecks.some(a => a.name === d));
+    const cur = input.value.trim();
+    const chip = (name, kind) => {
+      const b = document.createElement('button');
+      b.className = 'deck' + (name === cur ? ' on' : '');
+      b.dataset.name = name;
+      b.innerHTML = `<span class="ico">${kind === 'anki' ? '📚' : '🕘'}</span> ${M.esc(name)}`;
+      b.onclick = () => { input.value = name; renderDecks(); };
+      box.appendChild(b);
+    };
+    box.innerHTML = '';
+    ankiDecks.forEach(d => chip(d.name, 'anki'));
+    recent.forEach(d => chip(d, 'recent'));
+    const isExisting = ankiDecks.some(d => d.name === cur);
+    if (ankiState === 'ok') {
+      note.textContent = isExisting ? '📚 Baralho do AnkiDroid: os cards entram nele.'
+        : (cur ? '＋ Baralho novo: será criado no AnkiDroid.' : `${ankiDecks.length} baralho(s) no AnkiDroid.`);
+    } else if (ankiState === 'permission') {
+      note.innerHTML = '';
+      const b = document.createElement('button'); b.className = 'primary'; b.style.margin = '6px 0';
+      b.textContent = '📚 Mostrar meus baralhos do AnkiDroid';
+      b.onclick = () => Android.requestAnkiPermission();
+      note.appendChild(b);
+      note.insertAdjacentHTML('beforeend', '<div>O AnkiDroid vai pedir permissão uma vez. Ou digite o nome do baralho.</div>');
+    } else if (ankiState === 'missing') {
+      note.textContent = 'AnkiDroid não encontrado neste celular: digite o nome do baralho e use Compartilhar ou Salvar.';
+    } else if (ankiState === 'error') {
+      note.innerHTML = 'Não foi possível ler os baralhos. No AnkiDroid: Configurações → Avançado → ' +
+        'ative <b>Ativar acesso pela API do AnkiDroid</b>, e toque de novo em Enviar para o Anki.';
+    } else note.textContent = '';
+  }
+  window.onAnkiPermission = ok => {
+    if (!ok) M.toast('Sem permissão: digite o nome do baralho.');
+    renderDecks();
+  };
+  document.addEventListener('input', e => { if (e.target && e.target.id === 'ak-deck') {
+    const box = document.querySelector('#ak-decks');
+    box && box.querySelectorAll('.deck').forEach(b => b.classList.toggle('on', b.dataset.name === e.target.value.trim()));
+    const note = document.querySelector('#ak-deck-note');
+    if (ankiState === 'ok' && note) note.textContent = ankiDecks.some(d => d.name === e.target.value.trim())
+      ? '📚 Baralho do AnkiDroid: os cards entram nele.' : '＋ Baralho novo: será criado no AnkiDroid.';
+  } });
+
   // ---------------------------------------------------------------- janela "Enviar para o Anki"
   window.showAnki = function () {
     const s = M.settings, store = M.store, rid = store.current_root;
@@ -147,12 +207,13 @@
       document.querySelector('#sheet-title').textContent = 'Enviar para o Anki';
       const body = document.querySelector('#sheet-body');
       const n = M.totalCount(rid) + 1;
-      const recent = (s.recentDecks || []).map(d => `<option value="${M.esc(d)}">`).join('');
       body.innerHTML = `
         <p><b>${n} card(s)</b> do card raiz “${M.esc(title)}”, com as mesmas cores e formatação.</p>
-        <label class="field">Baralho no Anki (o nome de um baralho que já existe faz os cards entrarem nele)
-          <input id="ak-deck" list="ak-recent" value="${M.esc(s.ankiDeck || ('Montador::' + title.replace(/::/g, ' ')))}">
-          <datalist id="ak-recent">${recent}</datalist></label>
+        <div class="side"><span>BARALHO NO ANKI</span></div>
+        <input id="ak-deck" class="deck-input" value="${M.esc(s.ankiDeck || ('Montador::' + title.replace(/::/g, ' ')))}"
+               placeholder="Nome do baralho (ou toque num da lista)">
+        <div id="ak-deck-note" class="muted"></div>
+        <div id="ak-decks" class="deck-list"></div>
         <label class="field">Tamanho do texto normal no Anki (px) — use o mesmo dos seus outros cards
           <input id="ak-size" type="number" min="10" max="120" value="${s.ankiBasePx || 20}"></label>
         <div class="menu">
@@ -161,23 +222,25 @@
           <label><input type="radio" name="ak-order" value="0" ${s.subFirst === false ? 'checked' : ''}>
             <span>Card raiz primeiro, depois os sub-cards</span></label>
         </div>
-        <p class="muted">“Abrir no AnkiDroid” importa o baralho direto. Importar de novo atualiza os mesmos cards.
-          Também dá para compartilhar o arquivo .apkg (Drive, e-mail, Anki no computador).</p>`;
+        <p class="muted">“Abrir no AnkiDroid” importa os cards no baralho escolhido. Importar de novo atualiza os
+          mesmos cards. Também dá para compartilhar ou salvar o arquivo .apkg.</p>`;
+      renderDecks();
       const opts = () => {
         const deck = document.querySelector('#ak-deck').value.trim() || 'Montador';
+        const real = ankiDecks.find(d => d.name === deck);
         const size = Math.max(10, Math.min(120, parseInt(document.querySelector('#ak-size').value, 10) || 20));
         const subFirst = document.querySelector('input[name="ak-order"]:checked').value === '1';
         Object.assign(s, { ankiDeck: deck, ankiBasePx: size, subFirst,
           recentDecks: [deck, ...(s.recentDecks || []).filter(d => d !== deck)].slice(0, 10) });
         M.saveSettings();
-        return { deck, size, subFirst };
+        return { deck, size, subFirst, realId: real && real.id ? Number(real.id) : null };
       };
       const run = async mode => {
         const o = opts();
         M.toast('Gerando o pacote do Anki…', 1500);
         try {
-          const { b64, count } = await buildApkg(rid, o.deck, o.subFirst, o.size, !!s.shadow);
-          const name = (o.deck.split('::').pop().replace(/[^\w\- ]+/g, '').trim() || 'flashcards') + '.apkg';
+          const { b64, count } = await buildApkg(rid, o.deck, o.subFirst, o.size, !!s.shadow, o.realId);
+          const name = (o.deck.split('::').pop().replace(/[\/:*?"<>|]+/g, '').trim() || 'flashcards') + '.apkg';
           if (M.isAndroid()) {
             if (mode === 'save') Android.saveFile(name, b64, 'application/apkg');
             else Android.shareFile(name, b64, 'application/apkg', mode);
