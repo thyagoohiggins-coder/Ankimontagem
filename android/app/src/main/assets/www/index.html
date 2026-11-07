@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Montador de Flashcards</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <select id="deck" aria-label="Card raiz"></select>
+    <button id="btn-new" class="ghost" title="Novo card raiz">＋</button>
+    <button id="btn-study" class="primary" title="Estudar">▶</button>
+    <button id="btn-menu" class="ghost icon" title="Menu">☰</button>
+  </header>
+  <div id="stats"></div>
+  <main id="list"></main>
+  <div id="empty" class="hidden">
+    <h2>Nenhum card ainda</h2>
+    <p>Crie um card raiz. No <b>BACK</b>, selecione o trecho que você não conhece e toque em
+      <b style="color:var(--red)">🖍 Destacar</b>: ele fica vermelho e vira um novo card.</p>
+    <button id="btn-first" class="primary big">＋ Criar primeiro card</button>
+  </div>
+</div>
+
+<!-- barra de formatação: aparece ao selecionar texto -->
+<div id="fmtbar" class="hidden">
+  <div class="row">
+    <button data-cmd="highlight" class="hl">🖍 Destacar</button>
+    <button data-cmd="join" class="join">🔗 Juntar</button>
+    <button data-cmd="open" class="open hidden">↪ Abrir sub-card</button>
+    <button data-cmd="unhl" class="unhl hidden">✕ Destaque</button>
+    <button data-cmd="bold"><b>B</b></button>
+    <button data-cmd="italic"><i>I</i></button>
+    <button data-cmd="underline"><u>U</u></button>
+    <button data-cmd="strike"><s>S</s></button>
+    <button data-cmd="color" title="Cor da fonte"><span class="sw" id="sw-color"></span>A</button>
+    <button data-cmd="ucolor" title="Cor do sublinhado"><span class="ul" id="sw-ucolor">U</span></button>
+    <button data-cmd="size" id="btn-size">11.5</button>
+    <button data-cmd="clear" title="Limpar formatação">⌫</button>
+  </div>
+  <div id="palette" class="row hidden"></div>
+</div>
+
+<!-- painel deslizante (sub-cards, resumo, menu, Anki) -->
+<div id="sheet-bg" class="hidden"></div>
+<div id="sheet" class="hidden">
+  <div class="sheet-head">
+    <button id="sheet-back" class="ghost icon hidden">‹</button>
+    <div id="sheet-title"></div>
+    <button id="sheet-close" class="ghost icon">✕</button>
+  </div>
+  <div id="sheet-body"></div>
+  <div id="sheet-foot"></div>
+</div>
+
+<!-- estudo -->
+<div id="study" class="hidden">
+  <div class="study-top">
+    <button id="study-exit" class="ghost">← Editar</button>
+    <span id="study-progress"></span>
+    <span class="zoom"><button id="z-minus" class="ghost">A-</button><button id="z-plus" class="ghost">A+</button></span>
+  </div>
+  <div class="bar"><div id="study-fill"></div></div>
+  <div id="study-origin"></div>
+  <div id="study-card">
+    <div class="side">FRONT</div>
+    <div id="study-front" class="rich"></div>
+    <div id="study-back-wrap" class="hidden">
+      <div class="side">BACK</div>
+      <div id="study-back" class="rich back"></div>
+    </div>
+    <div id="study-hint">Toque para virar</div>
+  </div>
+  <div class="study-nav">
+    <button id="study-prev" class="ghost">←</button>
+    <button id="study-flip" class="primary">Virar</button>
+    <button id="study-next" class="ghost">→</button>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+<input id="file-import" type="file" accept="application/json,.json" hidden>
+
+<script src="vendor/sha256.js"></script>
+<script src="app.js"></script>
+<script src="anki-model.js"></script>
+<script src="anki.js"></script>
+</body>
+</html>

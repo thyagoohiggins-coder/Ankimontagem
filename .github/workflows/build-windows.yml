@@ -1,4 +1,4 @@
-name: Gerar programa Windows
+name: Gerar programa Windows e app Android
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Tag da release (ex.: v2.0.0). Vazio = só gerar os .exe"
+        description: "Tag da release (ex.: v3.0.0). Vazio = só gerar os arquivos"
         required: false
         default: ""
 
@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  windows:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,12 +52,67 @@ jobs:
           name: Montador-de-Flashcards-Windows
           path: dist/*.exe
 
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Preparar chave de assinatura
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          # Com os segredos cadastrados, todas as versões usam a mesma chave e atualizam por cima.
+          # Sem eles, uma chave nova é gerada só para este build.
+          ks="$RUNNER_TEMP/montador.jks"
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$ks"
+            pass="$KEYSTORE_PASSWORD"
+          else
+            pass="$(openssl rand -hex 16)"
+            keytool -genkeypair -keystore "$ks" -storepass "$pass" -keypass "$pass" -alias montador \
+              -keyalg RSA -keysize 2048 -validity 36500 -dname "CN=Montador de Flashcards"
+            echo "::warning::APK assinado com chave temporária. Cadastre ANDROID_KEYSTORE_B64 e ANDROID_KEYSTORE_PASSWORD para as atualizações instalarem por cima."
+          fi
+          echo "::add-mask::$pass"
+          echo "MONTADOR_KEYSTORE=$ks" >> "$GITHUB_ENV"
+          echo "MONTADOR_KEYSTORE_PASSWORD=$pass" >> "$GITHUB_ENV"
+
+      - name: Gerar APK
+        run: gradle -p android --no-daemon assembleRelease
+      - name: Renomear APK
+        run: |
+          version=$(python3 -c "import re;print(re.search(r'__version__ = \"(.+?)\"', open('montador/__init__.py').read()).group(1))")
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/MontadorDeFlashcards-android-$version.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Montador-de-Flashcards-Android
+          path: dist/*.apk
+
+  release:
+    needs: [windows, android]
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
       - name: Publicar release
-        if: startsWith(github.ref, 'refs/tags/v') || inputs.release_tag != ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.release_tag || github.ref_name }}
           target_commitish: ${{ github.sha }}
           name: Montador de Flashcards ${{ inputs.release_tag || github.ref_name }}
           body_path: RELEASE_NOTES.md
-          files: dist/*.exe
+          files: |
+            dist/*.exe
+            dist/*.apk

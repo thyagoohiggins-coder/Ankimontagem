@@ -5,3 +5,7 @@ build/*.spec
 dist/
 build/MontadorDeFlashcards*/
 pyi-build/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
