@@ -2,9 +2,31 @@
 
 Aplicativo web (HTML + CSS + JavaScript puro, sem instalação) para montar flashcards com **aprofundamento por trechos destacados**.
 
-## Como usar
+## Programa para Windows
 
-Abra o `index.html` no navegador. Os dados ficam salvos automaticamente no navegador (localStorage). Use **Exportar/Importar** para fazer backup em JSON.
+O montador é um programa de desktop (Electron) com duas versões:
+
+- **`Montador de Flashcards Setup 1.0.0.exe`**: instalador. Cria atalho na área de trabalho e no menu Iniciar.
+- **`MontadorDeFlashcards-portatil-1.0.0.exe`**: versão portátil. Basta dar dois cliques, sem instalar.
+
+### Onde baixar
+A cada push, o GitHub Actions gera os dois `.exe`: aba **Actions** → *Gerar programa Windows* →
+última execução → artefato **Montador-de-Flashcards-Windows**.
+
+> Como o programa não tem assinatura digital paga, o Windows pode mostrar "O Windows protegeu o computador".
+> Clique em **Mais informações → Executar assim mesmo**.
+
+### Gerar o .exe você mesmo (no Windows)
+```bash
+npm install
+npm run dist:win
+```
+Os arquivos ficam na pasta `dist/`. Para só abrir o programa sem gerar instalador: `npm start`.
+
+Os cards ficam salvos automaticamente no próprio programa. Use **Exportar/Importar** para fazer backup em JSON.
+Também dá para abrir o `index.html` direto no navegador, sem instalar nada.
+
+## Como usar
 
 1. Clique em **+ Novo card raiz** e preencha o **FRONT** e o **BACK**.
    - Os dois lados têm formatação: negrito, itálico, sublinhado, tachado, tamanho, **cor da fonte**, **cor do sublinhado** e listas.
