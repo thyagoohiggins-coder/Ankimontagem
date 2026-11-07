@@ -49,7 +49,7 @@ Na página de [Releases](../../releases), baixe:
 - ☰ → **Enviar para o Anki…** (Ctrl+E) envia o card raiz e todos os sub-cards com as mesmas cores e formatação.
 - Escolha a ordem: **sub-cards primeiro, do último até o card raiz** (padrão) ou o card raiz primeiro.
 - **Direto no Anki:** com o Anki aberto e o complemento **AnkiConnect** (código `2055492159`). É criado o tipo de
-  nota "Montador de Flashcards" (campos Frente, Verso, Origem, Nível) e o back fica em azul Tiffany.
+  nota "Montador de Flashcards" (campos Frente e Verso) e o back fica em azul Tiffany.
   Reenviar atualiza os cards já enviados, sem duplicar. Os tamanhos de fonte são os mesmos do programa.
 - **Sem AnkiConnect:** *Salvar arquivo…* gera um **Pacote de Baralho do Anki (.apkg)**: dê dois cliques nele
   (ou Arquivo → Importar) e o baralho entra com o tipo de nota, as cores, a formatação e a ordem. Importar de novo

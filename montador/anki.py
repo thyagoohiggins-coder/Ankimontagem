@@ -19,7 +19,8 @@ from .model import HL_PREFIX, Card, Store
 
 ANKI_URL = "http://127.0.0.1:8765"
 MODEL = "Montador de Flashcards"
-FIELDS = ["Frente", "Verso", "Origem", "Nivel"]
+FIELDS = ["Frente", "Verso"]
+OLD_FIELDS = ["Origem", "Nivel"]   # usados até a 2.4; removidos do tipo de nota
 TIFFANY = "#0ABAB5"
 HL_RED = "#e11d2e"
 
@@ -28,7 +29,7 @@ CSS = """.card { font-family: "Segoe UI", Arial, sans-serif; font-size: 11.5pt; 
 .verso { color: #0ABAB5; }
 .origem { color: #8a96a3; font-size: 13px; margin-bottom: 8px; }
 .origem b { color: #e11d2e; }
-.hl { color: #e11d2e; }
+.hl { color: #e11d2e; text-decoration: none; border-bottom: 1.5px solid #e11d2e; padding-bottom: 0; }
 """
 FRONT_TMPL = """<div class="frente">{{Frente}}</div>"""
 BACK_TMPL = """{{FrontSide}}
@@ -89,8 +90,8 @@ class _QtHtmlToAnki(HTMLParser):
             href = a.get("href") or ""
             if href.startswith(HL_PREFIX):
                 bg = "; background-color: rgba(225,29,46,0.15)" if self.shadow else ""
-                self.out.append(f'<span class="hl" style="color:{HL_RED}; text-decoration: underline; '
-                                f'text-decoration-color:{HL_RED}{bg}">')
+                # borda fina em vez de text-decoration: o Anki desenha sempre igual (sem a linha grossa)
+                self.out.append(f'<span class="hl" style="color:{HL_RED}; border-bottom:1.5px solid {HL_RED}{bg}">')
                 self.hl_depth += 1
                 self.stack.append("/hl")
                 return
@@ -154,12 +155,9 @@ def ordered_cards(store: Store, root_id: str, subcards_first: bool) -> list[Card
 
 
 def note_fields(store: Store, card: Card, shadow: bool) -> dict:
-    d = store.depth(card.id)
     return {
         "Frente": qt_html_to_anki(card.front, shadow),
         "Verso": qt_html_to_anki(card.back, shadow),
-        "Origem": html.escape(card.snippet) if d else "",
-        "Nivel": str(d) if d else "",
     }
 
 
@@ -191,6 +189,13 @@ def ensure_model(url: str = ANKI_URL) -> None:
         invoke("updateModelTemplates", url,
                model={"name": MODEL, "templates": {"Cartão 1": {"Front": FRONT_TMPL, "Back": BACK_TMPL}}})
         invoke("updateModelStyling", url, model={"name": MODEL, "css": CSS})
+        try:  # tira os campos antigos (Origem, Nível); AnkiConnect antigo pode não ter essa ação
+            existing = invoke("modelFieldNames", url, modelName=MODEL)
+            for f in OLD_FIELDS:
+                if f in existing:
+                    invoke("modelFieldRemove", url, modelName=MODEL, fieldName=f)
+        except AnkiError:
+            pass
         return
     invoke("createModel", url, modelName=MODEL, inOrderFields=FIELDS, css=CSS,
            cardTemplates=[{"Name": "Cartão 1", "Front": FRONT_TMPL, "Back": BACK_TMPL}])
@@ -250,7 +255,7 @@ def export_txt(store: Store, root_id: str, deck: str, subcards_first: bool, shad
 
 
 # ====================================================================== pacote .apkg
-MODEL_ID = 1730946513      # fixo: reimportar atualiza o mesmo tipo de nota
+MODEL_ID = 1731000917      # fixo: reimportar atualiza o mesmo tipo de nota (novo na 2.5: só Frente e Verso)
 
 
 def _deck_id(name: str) -> int:
@@ -273,7 +278,7 @@ def export_apkg(store: Store, root_id: str, deck: str, subcards_first: bool, sha
     for i, c in enumerate(cards, 1):
         f = note_fields(store, c, shadow)
         note = genanki.Note(model=model, fields=[f[k] for k in FIELDS], tags=["montador-flashcards"],
-                            guid=genanki.guid_for("montador", c.id), due=i)
+                            guid=genanki.guid_for("montador-v2", c.id), due=i)
         d.add_note(note)
     genanki.Package(d).write_to_file(path)
     return len(cards)

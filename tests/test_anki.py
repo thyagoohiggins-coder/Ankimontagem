@@ -27,7 +27,8 @@ class AnkiTest(unittest.TestCase):
     def test_highlight_has_single_underline(self):
         out = anki.qt_html_to_anki(QT_HTML)
         inner = out.split('class="hl"', 1)[1].split("</span>", 1)[0]
-        self.assertEqual(inner.count("text-decoration"), 2)   # só no span .hl: underline + cor
+        self.assertEqual(inner.count("text-decoration"), 0)   # sem sublinhados empilhados
+        self.assertEqual(inner.count("border-bottom"), 1)     # uma linha fina só
         self.assertNotIn("Nível", anki.FRONT_TMPL)
 
     def test_plain_front(self):
@@ -41,6 +42,7 @@ class AnkiTest(unittest.TestCase):
         s.create_card(r.id, "b", snippet="b")
         self.assertEqual([c.front for c in anki.ordered_cards(s, r.id, True)], ["b", "a1", "a", "raiz"])
         self.assertEqual([c.front for c in anki.ordered_cards(s, r.id, False)], ["raiz", "a", "a1", "b"])
+        self.assertEqual(list(anki.note_fields(s, a, False)), ["Frente", "Verso"])   # sem Nível/Origem
 
     def test_apkg_order_and_model(self):
         import json
