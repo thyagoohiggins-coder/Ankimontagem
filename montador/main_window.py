@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (QApplication, QComboBox, QDialog, QFileDialog, QF
                                QSizePolicy, QStackedWidget, QTextBrowser, QToolButton, QTreeWidget,
                                QTreeWidgetItem, QVBoxLayout, QWidget)
 
+from . import settings
 from .editor import FRONT_COLOR, HL_RED, TIFFANY, FormatBar, RichEditor, default_font
 from .model import Card, Store
 
@@ -201,7 +202,7 @@ class StudyPage(QWidget):
         self.cards: list[Card] = []
         self.i = 0
         self.flipped = False
-        self.zoom = 0
+        self.zoom = settings.get_int("study/zoom", 0)
         self.setFocusPolicy(Qt.StrongFocus)
         self.setObjectName("studyPage")
         lay = QVBoxLayout(self)
@@ -284,6 +285,7 @@ class StudyPage(QWidget):
 
     def set_zoom(self, z: int):
         self.zoom = max(-3, min(8, z))
+        settings.set_value("study/zoom", self.zoom)
         self.show_card()
 
     def _set(self, browser: QTextBrowser, html_text: str, empty: str):
@@ -428,6 +430,7 @@ class MainWindow(QMainWindow):
         self.items: dict[str, CardItem] = {}
         self.open_id: str | None = None
         self._syncing = False
+        RichEditor.load_styles()
 
         self.save_timer = QTimer(self, singleShot=True, interval=500)
         self.save_timer.timeout.connect(self.save)
@@ -524,6 +527,7 @@ class MainWindow(QMainWindow):
         self.plain_action.setCheckable(True)
         self.plain_action.setChecked(True)
         self.plain_action.toggled.connect(lambda on: setattr(RichEditor, "plain_paste_default", on))
+        m.addAction("Restaurar formatação padrão do texto", self.reset_format)
         self.top_action = m.addAction("Fixar janela sempre no topo")
         self.top_action.setCheckable(True)
         self.top_action.toggled.connect(self.set_on_top)
@@ -774,6 +778,13 @@ class MainWindow(QMainWindow):
             self.start_study()
 
     # ---------- diversos ----------
+    def reset_format(self):
+        RichEditor.reset_styles()
+        for it in self.items.values():
+            it.front._adjust_typing_format()
+            it.back._adjust_typing_format()
+        self.statusBar().showMessage("Formatação padrão restaurada: tamanho 11.5, back em azul Tiffany.", 4000)
+
     def set_on_top(self, on: bool):
         self.setWindowFlag(Qt.WindowStaysOnTopHint, on)
         self.show()
@@ -811,7 +822,8 @@ class MainWindow(QMainWindow):
             "Ctrl+N — novo card raiz<br><br>"
             "<b>Texto</b><br>"
             "Ctrl+B / Ctrl+I / Ctrl+U — negrito / itálico / sublinhado<br>"
-            "Ctrl+Shift+X — tachado · Ctrl+Espaço — limpar formatação<br>"
+            "Ctrl+Shift+X — tachado · Ctrl+Espaço — limpar formatação e voltar ao padrão<br>"
+            "A última formatação e o último tamanho escolhidos viram o padrão do texto novo<br>"
             "Ctrl+V — colar (sem formatação, se ativado no menu ☰)<br>"
             "Ctrl+Shift+V — colar sem formatação<br>"
             "Botão direito — menu completo (cores, colar com formatação…)<br><br>"

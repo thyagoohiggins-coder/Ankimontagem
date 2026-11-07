@@ -27,6 +27,12 @@ Na página de [Releases](../../releases), baixe:
 ### Texto
 - A barra de formatação só aparece quando há texto selecionado: negrito, itálico, sublinhado, tachado,
   **cor da fonte**, **cor do sublinhado**, tamanho e limpar formatação.
+- **A formatação é lembrada:** o último tamanho de fonte e a última formatação escolhidos (negrito, itálico,
+  sublinhado, tachado, cor da fonte e cor do sublinhado) viram o padrão do texto novo, inclusive depois de
+  fechar o programa. FRONT e BACK guardam cada um a sua. Num card ou parágrafo vazio vale o padrão; dentro de
+  um texto já escrito, o novo texto segue o texto ao redor. **⌫ / Ctrl+Espaço** ou ☰ → *Restaurar formatação
+  padrão* voltam ao original (tamanho 11.5, back em azul Tiffany).
+- O tamanho do texto no modo de estudo (+ / −) também é lembrado.
 - **Colar sem formatação**: ligado por padrão no Ctrl+V (menu ☰). Ctrl+Shift+V sempre cola sem formatação;
   o botão direito também oferece "Colar com formatação".
 - O botão direito abre um menu completo em português.

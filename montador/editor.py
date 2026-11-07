@@ -6,6 +6,7 @@ from PySide6.QtGui import (QAction, QColor, QFont, QIcon, QKeySequence, QPainter
                            QTextCharFormat, QTextCursor, QTextFormat)
 from PySide6.QtWidgets import QColorDialog, QFrame, QHBoxLayout, QMenu, QTextEdit, QToolButton, QWidget
 
+from . import settings
 from .model import HL_PREFIX
 
 TIFFANY = "#0ABAB5"
@@ -17,6 +18,9 @@ FONT_COLORS = [
     ("Azul Tiffany", TIFFANY), ("Preto", FRONT_COLOR), ("Azul", "#2563eb"), ("Verde", "#16a34a"),
     ("Laranja", "#ea580c"), ("Roxo", "#7c3aed"), ("Rosa", "#db2777"), ("Cinza", "#6b7785"),
 ]
+FONT_SIZES = [9, 10, 11, 11.5, 12, 13, 14, 16, 18, 20, 24, 28, 32]
+BASE_SIZE = 11.5
+
 UNDERLINE_COLORS = [
     ("Amarelo", "#facc15"), ("Laranja", "#f97316"), ("Verde", "#22c55e"), ("Azul", "#3b82f6"),
     ("Roxo", "#a855f7"), ("Rosa", "#ec4899"), ("Azul Tiffany", TIFFANY), ("Preto", "#111827"),
@@ -26,7 +30,7 @@ UNDERLINE_COLORS = [
 def default_font() -> QFont:
     f = QFont("Segoe UI")
     f.setStyleHint(QFont.SansSerif)
-    f.setPointSizeF(11.5)
+    f.setPointSizeF(BASE_SIZE)
     return f
 
 
@@ -74,6 +78,53 @@ class RichEditor(QTextEdit):
 
     plain_paste_default = True               # configuração global "Colar sem formatação"
 
+    # Última formatação escolhida, separada para FRONT (False) e BACK (True).
+    # Vira o padrão do texto novo e é lembrada entre sessões.
+    styles: dict[bool, dict] = {}
+
+    @staticmethod
+    def default_style(is_back: bool) -> dict:
+        return {"size": BASE_SIZE, "bold": False, "italic": False, "underline": False, "strike": False,
+                "color": TIFFANY if is_back else FRONT_COLOR, "ucolor": ""}
+
+    @classmethod
+    def load_styles(cls) -> None:
+        for side, key in ((False, "style/front"), (True, "style/back")):
+            st = cls.default_style(side)
+            saved = settings.get_json(key, {})
+            if isinstance(saved, dict):
+                st.update({k: v for k, v in saved.items() if k in st})
+            cls.styles[side] = st
+
+    @classmethod
+    def reset_styles(cls) -> None:
+        for side, key in ((False, "style/front"), (True, "style/back")):
+            cls.styles[side] = cls.default_style(side)
+            settings.set_json(key, cls.styles[side])
+
+    @property
+    def style(self) -> dict:
+        if self.is_back not in RichEditor.styles:
+            RichEditor.styles[self.is_back] = RichEditor.default_style(self.is_back)
+        return RichEditor.styles[self.is_back]
+
+    def remember(self, **changes) -> None:
+        self.style.update(changes)
+        settings.set_json("style/back" if self.is_back else "style/front", self.style)
+
+    def style_format(self) -> QTextCharFormat:
+        st = self.style
+        f = QTextCharFormat()
+        f.setForeground(QColor(st["color"]))
+        f.setFontPointSize(float(st["size"]))
+        f.setFontWeight(QFont.Bold if st["bold"] else QFont.Normal)
+        f.setFontItalic(bool(st["italic"]))
+        f.setFontUnderline(bool(st["underline"]))
+        f.setFontStrikeOut(bool(st["strike"]))
+        if st["underline"] and st["ucolor"]:
+            f.setUnderlineColor(QColor(st["ucolor"]))
+        return f
+
     def __init__(self, is_back: bool, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.is_back = is_back
@@ -91,14 +142,14 @@ class RichEditor(QTextEdit):
         pal.setColor(QPalette.Text, self.base_color)
         pal.setColor(QPalette.PlaceholderText, QColor("#9aa5b1"))
         self.setPalette(pal)
-        self._reset_typing_color()
+        self._adjust_typing_format()
         self.setPlaceholderText(
             "Resposta / explicação…   Selecione um trecho que você não conhece e aperte Ctrl+D"
             if is_back else "Pergunta / conceito…")
         self.setMouseTracking(True)
         self.document().contentsChanged.connect(self._fit_height)
         self.selectionChanged.connect(self._on_selection)
-        self.cursorPositionChanged.connect(self._dont_extend_highlight)
+        self.cursorPositionChanged.connect(self._adjust_typing_format)
         self._fit_height()
 
     # ---------- conteúdo ----------
@@ -110,13 +161,35 @@ class RichEditor(QTextEdit):
             self.clear()
         self.document().setDefaultFont(default_font())
         self.blockSignals(False)
-        self._reset_typing_color()
+        self._adjust_typing_format()
         self._fit_height()
 
-    def _reset_typing_color(self) -> None:
+    _STYLE_PROPS = (QTextFormat.ForegroundBrush, QTextFormat.FontPointSize, QTextFormat.FontWeight,
+                    QTextFormat.FontItalic, QTextFormat.FontUnderline, QTextFormat.TextUnderlineStyle,
+                    QTextFormat.FontStrikeOut, QTextFormat.TextUnderlineColor)
+
+    def _adjust_typing_format(self) -> None:
+        """Define a formatação do próximo texto digitado.
+
+        - Depois de um trecho destacado, o texto novo não fica vermelho.
+        - Em card vazio ou parágrafo vazio, usa a última formatação escolhida.
+        - Dentro de um texto existente, segue o texto ao redor; só completa o que faltar.
+        """
+        cur = self.textCursor()
+        if cur.hasSelection():
+            return
         fmt = self.currentCharFormat()
-        fmt.setForeground(self.base_color)
-        self.setCurrentCharFormat(fmt)
+        if fmt.anchorHref().startswith(HL_PREFIX) or cur.block().length() <= 1:
+            self.setCurrentCharFormat(self.style_format())
+            return
+        st = self.style_format()
+        changed = False
+        for p in self._STYLE_PROPS:
+            if not fmt.hasProperty(p) and st.hasProperty(p):
+                fmt.setProperty(p, st.property(p))
+                changed = True
+        if changed:
+            self.setCurrentCharFormat(fmt)
 
     def _fit_height(self) -> None:
         h = int(self.document().size().height()) + 4
@@ -131,11 +204,16 @@ class RichEditor(QTextEdit):
         plain = self._force_plain or RichEditor.plain_paste_default
         if plain and source.hasText():
             cur = self.textCursor()
-            fmt = cur.charFormat()
-            fmt.setForeground(self.base_color)
+            if cur.hasSelection():
+                cur.removeSelectedText()
+                self.setTextCursor(cur)
+            self._adjust_typing_format()
+            fmt = self.currentCharFormat()
             fmt.clearBackground()
             for p in (QTextFormat.AnchorHref, QTextFormat.IsAnchor):
                 fmt.clearProperty(p)
+            if not fmt.hasProperty(QTextFormat.ForegroundBrush):
+                fmt.setForeground(QColor(self.style["color"]))
             cur.insertText(source.text(), fmt)
             self.setTextCursor(cur)
         else:
@@ -160,22 +238,30 @@ class RichEditor(QTextEdit):
     def _merge(self, fmt: QTextCharFormat) -> None:
         self.mergeCurrentCharFormat(fmt)
 
+    # Cada escolha de formatação é aplicada e lembrada como padrão do texto novo.
     def toggle_bold(self):
-        f = QTextCharFormat()
-        f.setFontWeight(QFont.Normal if self.fontWeight() > QFont.Normal else QFont.Bold)
-        self._merge(f)
+        on = not self.fontWeight() > QFont.Normal
+        f = QTextCharFormat(); f.setFontWeight(QFont.Bold if on else QFont.Normal); self._merge(f)
+        self.remember(bold=on)
 
     def toggle_italic(self):
-        f = QTextCharFormat(); f.setFontItalic(not self.fontItalic()); self._merge(f)
+        on = not self.fontItalic()
+        f = QTextCharFormat(); f.setFontItalic(on); self._merge(f)
+        self.remember(italic=on)
 
     def toggle_underline(self):
-        f = QTextCharFormat(); f.setFontUnderline(not self.fontUnderline()); self._merge(f)
+        on = not self.fontUnderline()
+        f = QTextCharFormat(); f.setFontUnderline(on); self._merge(f)
+        self.remember(underline=on, **({} if on else {"ucolor": ""}))
 
     def toggle_strike(self):
-        f = QTextCharFormat(); f.setFontStrikeOut(not self.currentCharFormat().fontStrikeOut()); self._merge(f)
+        on = not self.currentCharFormat().fontStrikeOut()
+        f = QTextCharFormat(); f.setFontStrikeOut(on); self._merge(f)
+        self.remember(strike=on)
 
     def set_font_color(self, c: QColor):
         f = QTextCharFormat(); f.setForeground(c); self._merge(f)
+        self.remember(color=c.name())
 
     def set_underline_color(self, c: QColor):
         f = QTextCharFormat()
@@ -183,23 +269,30 @@ class RichEditor(QTextEdit):
         f.setUnderlineStyle(QTextCharFormat.SingleUnderline)
         f.setUnderlineColor(c)
         self._merge(f)
+        self.remember(underline=True, ucolor=c.name())
+
+    def current_size(self) -> float:
+        return self.textCursor().charFormat().fontPointSize() or float(self.style["size"])
+
+    def set_size(self, size: float):
+        size = max(7.0, min(40.0, float(size)))
+        f = QTextCharFormat(); f.setFontPointSize(size); self._merge(f)
+        self.remember(size=size)
 
     def change_size(self, delta: float):
-        cur = self.textCursor()
-        size = cur.charFormat().fontPointSize() or default_font().pointSizeF()
-        f = QTextCharFormat(); f.setFontPointSize(max(7.0, min(40.0, size + delta))); self._merge(f)
+        self.set_size(self.current_size() + delta)
 
     def clear_format(self):
-        """Remove a formatação da seleção, mantendo os trechos destacados."""
+        """Remove a formatação da seleção (mantendo os destaques) e volta ao padrão original."""
+        self.remember(**RichEditor.default_style(self.is_back))
         cur = self.textCursor()
         if not cur.hasSelection():
+            self.setCurrentCharFormat(self.style_format())
             return
         start, end = cur.selectionStart(), cur.selectionEnd()
         anchors = self._anchor_ranges(start, end)
         cur.beginEditBlock()
-        plain = QTextCharFormat()
-        plain.setForeground(self.base_color)
-        cur.setCharFormat(plain)
+        cur.setCharFormat(self.style_format())
         for a, b, href in anchors:
             c = QTextCursor(self.document()); c.setPosition(a); c.setPosition(b, QTextCursor.KeepAnchor)
             c.mergeCharFormat(highlight_format(href))
@@ -233,7 +326,7 @@ class RichEditor(QTextEdit):
         cur.mergeCharFormat(highlight_format(HL_PREFIX + child_id))
         cur.clearSelection()
         self.setTextCursor(cur)
-        self._dont_extend_highlight()
+        self._adjust_typing_format()
 
     def unhighlight(self, predicate) -> bool:
         """Remove o destaque dos trechos cujo id satisfaz ``predicate``."""
@@ -249,23 +342,10 @@ class RichEditor(QTextEdit):
                       QTextFormat.TextUnderlineColor, QTextFormat.FontUnderline):
                 fmt.clearProperty(p)
             fmt.clearBackground()
-            fmt.setForeground(self.base_color)
+            fmt.setForeground(QColor(self.style["color"]))
             c.setCharFormat(fmt)
         c.endEditBlock()
         return True
-
-    def _dont_extend_highlight(self) -> None:
-        # Ao digitar logo depois de um trecho destacado, o texto novo não fica vermelho.
-        if self.textCursor().hasSelection():
-            return
-        fmt = self.currentCharFormat()
-        if fmt.anchorHref().startswith(HL_PREFIX):
-            for p in (QTextFormat.AnchorHref, QTextFormat.IsAnchor, QTextFormat.TextUnderlineStyle,
-                      QTextFormat.TextUnderlineColor, QTextFormat.FontUnderline):
-                fmt.clearProperty(p)
-            fmt.clearBackground()
-            fmt.setForeground(self.base_color)
-            self.setCurrentCharFormat(fmt)
 
     def child_at(self, pos: QPoint) -> str | None:
         href = self.anchorAt(pos)
@@ -277,8 +357,7 @@ class RichEditor(QTextEdit):
 
     def focusInEvent(self, e):
         super().focusInEvent(e)
-        if not self.textCursor().hasSelection() and not self.currentCharFormat().hasProperty(QTextFormat.ForegroundBrush):
-            self._reset_typing_color()
+        self._adjust_typing_format()
 
     def focusOutEvent(self, e):
         super().focusOutEvent(e)
@@ -355,10 +434,21 @@ class RichEditor(QTextEdit):
         fm.addSeparator()
         fm.addAction("Aumentar fonte").triggered.connect(lambda: self.change_size(+2))
         fm.addAction("Diminuir fonte").triggered.connect(lambda: self.change_size(-2))
+        m.addMenu(size_menu(m, self.set_size, self.current_size()))
         m.addMenu(color_menu(m, FONT_COLORS, self.set_font_color, False, "Cor da fonte"))
         m.addMenu(color_menu(m, UNDERLINE_COLORS, self.set_underline_color, True, "Cor do sublinhado"))
-        a = m.addAction("Limpar formatação"); a.triggered.connect(self.clear_format); a.setEnabled(has_sel)
+        m.addAction("Limpar formatação (volta ao padrão)").triggered.connect(self.clear_format)
         m.exec(e.globalPos())
+
+
+def size_menu(parent: QWidget, on_pick, current: float) -> QMenu:
+    m = QMenu("Tamanho da fonte", parent)
+    for sz in FONT_SIZES:
+        a = m.addAction(f"{sz:g}")
+        a.setCheckable(True)
+        a.setChecked(abs(sz - current) < 0.01)
+        a.triggered.connect(lambda _=False, v=sz: on_pick(v))
+    return m
 
 
 def highlight_format(href: str) -> QTextCharFormat:
@@ -394,7 +484,7 @@ class FormatBar(QFrame):
             if bold:
                 f = b.font(); f.setBold(True); b.setFont(f)
             if fn:
-                b.clicked.connect(lambda: self.editor and fn(self.editor))
+                b.clicked.connect(lambda: self.editor and (fn(self.editor), self._sync_size()))
             if menu:
                 b.setMenu(menu)
                 b.setPopupMode(QToolButton.InstantPopup)
@@ -416,18 +506,27 @@ class FormatBar(QFrame):
         uc = btn("", "Cor do sublinhado",
                  menu=color_menu(self, UNDERLINE_COLORS, lambda c: self.editor and self.editor.set_underline_color(c), True, "Cor do sublinhado"))
         uc.setIcon(swatch("#facc15", True))
-        btn("A+", "Aumentar fonte", lambda e: e.change_size(+2))
-        btn("A-", "Diminuir fonte", lambda e: e.change_size(-2))
-        btn("⌫", "Limpar formatação (Ctrl+Espaço)", RichEditor.clear_format)
+        self.size_btn = btn("11.5", "Tamanho da fonte (fica lembrado como padrão)")
+        self.size_btn.setPopupMode(QToolButton.InstantPopup)
+        self.size_btn.setMinimumWidth(38)
+        btn("⌫", "Limpar formatação e voltar ao padrão (Ctrl+Espaço)", RichEditor.clear_format)
         self.hide()
 
     def show_for(self, editor: RichEditor) -> None:
         self.editor = editor
         self.hl_btn.setVisible(editor.is_back)
+        self.hl_btn.setText("🖍 Destacar" if self.parentWidget().width() >= 430 else "🖍")
+        self.size_btn.setText(f"{editor.current_size():g}")
+        self.size_btn.setMenu(size_menu(self, lambda v: (editor.set_size(v), self.size_btn.setText(f"{v:g}")),
+                                        editor.current_size()))
         self.adjustSize()
         self.reposition()
         self.show()
         self.raise_()
+
+    def _sync_size(self) -> None:
+        if self.editor:
+            self.size_btn.setText(f"{self.editor.current_size():g}")
 
     def reposition(self) -> None:
         e = self.editor
