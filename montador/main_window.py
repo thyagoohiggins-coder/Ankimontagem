@@ -6,14 +6,15 @@ import os
 
 from PySide6.QtCore import QPoint, QStandardPaths, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QKeySequence, QPainter, QPalette, QPen, QShortcut, QTextCursor, QTextDocumentFragment
-from PySide6.QtWidgets import (QApplication, QComboBox, QDialog, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
+from PySide6.QtWidgets import (QApplication, QButtonGroup, QComboBox, QDialog, QLineEdit, QRadioButton, QFileDialog, QFrame, QHBoxLayout, QHeaderView,
                                QLabel, QListWidget, QMainWindow, QMenu, QMessageBox, QPushButton, QScrollArea,
                                QSizePolicy, QStackedWidget, QTextBrowser, QToolButton, QTreeWidget,
                                QTreeWidgetItem, QVBoxLayout, QWidget)
 
-from . import settings
-from .editor import FRONT_COLOR, HL_RED, TIFFANY, FormatBar, RichEditor, default_font
+from . import anki, settings
+from .editor import FRONT_COLOR, HL_RED, TIFFANY, FormatBar, RichEditor, apply_highlight_style, default_font
 from .model import Card, Store
+from .popup import CardPopup
 
 APP_NAME = "Montador de Flashcards"
 TEAL = "#0a8f8b"
@@ -101,6 +102,8 @@ class CardItem(QFrame):
         more.setPopupMode(QToolButton.InstantPopup)
         m = QMenu(more)
         if card.parent_id:
+            m.addAction("Ver em pop-ups (subir até a raiz)").triggered.connect(
+                lambda: self.win.show_card_popup(self.card.id, more.mapToGlobal(QPoint(0, more.height()))))
             m.addAction("Remover este destaque e o sub-card").triggered.connect(lambda: self.win.remove_highlight(self.card.id))
         else:
             m.addAction("Excluir este card raiz e todos os sub-cards").triggered.connect(self.win.delete_current_root)
@@ -116,7 +119,7 @@ class CardItem(QFrame):
             ed.formatSelection.connect(win.on_selection)
             ed.focusLost.connect(win.on_editor_focus_lost)
         self.back.highlightRequested.connect(lambda e: win.highlight(self, e))
-        self.back.openChildRequested.connect(win.open_card)
+        self.back.openChildRequested.connect(win.show_card_popup)
         self.back.removeHighlightRequested.connect(win.remove_highlight)
         self.front.textChanged.connect(self._front_changed)
         self.back.textChanged.connect(lambda: win.back_changed(self))
@@ -294,6 +297,7 @@ class StudyPage(QWidget):
         f.setPointSizeF(15 + self.zoom * 1.5)
         browser.document().setDefaultFont(f)
         browser.setFont(f)
+        apply_highlight_style(browser.document(), RichEditor.hl_shadow)
 
     def show_card(self):
         if not self.cards:
@@ -431,6 +435,7 @@ class MainWindow(QMainWindow):
         self.open_id: str | None = None
         self._syncing = False
         RichEditor.load_styles()
+        RichEditor.hl_shadow = settings.get_int("highlight/shadow", 0) == 1
 
         self.save_timer = QTimer(self, singleShot=True, interval=500)
         self.save_timer.timeout.connect(self.save)
@@ -528,9 +533,15 @@ class MainWindow(QMainWindow):
         self.plain_action.setChecked(True)
         self.plain_action.toggled.connect(lambda on: setattr(RichEditor, "plain_paste_default", on))
         m.addAction("Restaurar formatação padrão do texto", self.reset_format)
+        self.shadow_action = m.addAction("Sombra vermelha nos trechos destacados")
+        self.shadow_action.setCheckable(True)
+        self.shadow_action.setChecked(RichEditor.hl_shadow)
+        self.shadow_action.toggled.connect(self.set_shadow)
         self.top_action = m.addAction("Fixar janela sempre no topo")
         self.top_action.setCheckable(True)
         self.top_action.toggled.connect(self.set_on_top)
+        m.addSeparator()
+        m.addAction("Enviar para o Anki…", self.send_to_anki, QKeySequence("Ctrl+E"))
         m.addSeparator()
         m.addAction("Exportar baralhos…", self.export)
         m.addAction("Importar baralhos…", self.import_)
@@ -549,6 +560,7 @@ class MainWindow(QMainWindow):
         sc("F5", self.start_study)
         sc("Ctrl+Return", self.start_study)
         sc("Ctrl+R", self.show_summary)
+        sc("Ctrl+E", self.send_to_anki)
         sc("F1", self.show_help)
         sc("Alt+Down", lambda: self.step(+1))
         sc("Alt+Up", lambda: self.step(-1))
@@ -811,6 +823,31 @@ class MainWindow(QMainWindow):
         self.save()
         self.reload_decks()
 
+    def show_card_popup(self, card_id: str, at: QPoint):
+        if self.store.get(card_id):
+            self.format_bar.hide()
+            CardPopup(self, card_id, at, "down").show()
+
+    def set_shadow(self, on: bool):
+        RichEditor.hl_shadow = on
+        settings.set_value("highlight/shadow", 1 if on else 0)
+        for it in self.items.values():
+            for ed in (it.front, it.back):
+                ed.blockSignals(True)
+                apply_highlight_style(ed.document(), on)
+                ed.blockSignals(False)
+            it.card.back = it.back.toHtml() if it.back.toPlainText().strip() else ""
+        self.schedule_save()
+
+    def send_to_anki(self):
+        rid = self.store.current_root
+        if not rid:
+            return
+        self.save()
+        dlg = AnkiDialog(self, rid)
+        dlg.exec()
+        self.save()
+
     def show_help(self):
         QMessageBox.information(self, "Atalhos do teclado", (
             "<b>Montar</b><br>"
@@ -829,4 +866,91 @@ class MainWindow(QMainWindow):
             "Botão direito — menu completo (cores, colar com formatação…)<br><br>"
             "<b>Estudar</b><br>"
             "F5 — estudar · Espaço — virar · ← → — navegar · + / − — tamanho do texto · Esc — sair<br>"
-            "Ctrl+R — resumo do aprofundamento"))
+            "Ctrl+R — resumo do aprofundamento · Ctrl+E — enviar para o Anki<br><br>"
+            "<b>Pop-ups</b><br>"
+            "Ctrl+clique (ou botão direito) num trecho vermelho — abre o sub-card num pop-up<br>"
+            "No pop-up: clique num trecho para descer · ↑ ou ▲ Card pai para subir · Enter edita · Esc fecha"))
+
+
+# ====================================================================== Anki
+class AnkiDialog(QDialog):
+    def __init__(self, win: "MainWindow", root_id: str) -> None:
+        super().__init__(win)
+        self.win = win
+        self.root_id = root_id
+        s = win.store
+        self.setWindowTitle("Enviar para o Anki")
+        self.setMinimumWidth(min(460, max(340, win.width())))
+        lay = QVBoxLayout(self)
+        n = s.total_count(root_id) + 1
+        title = plain(s.get(root_id).front, 50) or "(sem título)"
+        lay.addWidget(QLabel(f"<b>{n} card(s)</b> do card raiz “{html.escape(title)}”, com as mesmas cores e formatação."))
+
+        lay.addWidget(QLabel("Baralho no Anki:"))
+        self.deck = QLineEdit(settings.get_json("anki/deck_prefix", "Montador") + "::" + title.replace("::", " "))
+        lay.addWidget(self.deck)
+
+        lay.addWidget(QLabel("Ordem dos cards novos no Anki:"))
+        self.sub_first = QRadioButton("Sub-cards primeiro: do último sub-card até o card raiz")
+        self.root_first = QRadioButton("Card raiz primeiro, depois os sub-cards")
+        g = QButtonGroup(self)
+        g.addButton(self.sub_first); g.addButton(self.root_first)
+        (self.sub_first if settings.get_int("anki/subcards_first", 1) else self.root_first).setChecked(True)
+        lay.addWidget(self.sub_first)
+        lay.addWidget(self.root_first)
+
+        info = QLabel("<b>Direto no Anki:</b> deixe o Anki aberto com o complemento <b>AnkiConnect</b> "
+                      "(Ferramentas → Complementos → Obter complementos → código <b>2055492159</b>). "
+                      "Cards já enviados são atualizados, não duplicados.<br>"
+                      "<b>Sem AnkiConnect:</b> salve o arquivo e importe no Anki em Arquivo → Importar.",
+                      objectName="muted")
+        info.setWordWrap(True)
+        lay.addWidget(info)
+
+        btns = QHBoxLayout()
+        file_btn = QPushButton("Salvar arquivo…", objectName="ghost")
+        file_btn.clicked.connect(self.save_file)
+        send = QPushButton("Enviar para o Anki", objectName="primary")
+        send.setDefault(True)
+        send.clicked.connect(self.send)
+        close = QPushButton("Fechar", objectName="ghost")
+        close.clicked.connect(self.reject)
+        btns.addWidget(close)
+        btns.addStretch(1)
+        btns.addWidget(file_btn)
+        btns.addWidget(send)
+        lay.addLayout(btns)
+
+    def _opts(self):
+        settings.set_value("anki/subcards_first", 1 if self.sub_first.isChecked() else 0)
+        deck = self.deck.text().strip() or "Montador"
+        if "::" in deck:
+            settings.set_json("anki/deck_prefix", deck.split("::")[0])
+        return deck, self.sub_first.isChecked(), RichEditor.hl_shadow
+
+    def send(self):
+        deck, sub_first, shadow = self._opts()
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            new, upd = anki.send_to_anki(self.win.store, self.root_id, deck, sub_first, shadow)
+        except anki.AnkiError as exc:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(self, "Enviar para o Anki", str(exc))
+            return
+        QApplication.restoreOverrideCursor()
+        self.win.save()
+        QMessageBox.information(self, "Enviar para o Anki",
+                                f"Pronto! {new} card(s) novo(s) e {upd} atualizado(s) no baralho “{deck}”.")
+        self.accept()
+
+    def save_file(self):
+        deck, sub_first, shadow = self._opts()
+        path, _ = QFileDialog.getSaveFileName(self, "Salvar arquivo para o Anki", "flashcards-anki.txt",
+                                              "Texto para o Anki (*.txt)")
+        if not path:
+            return
+        n = anki.export_txt(self.win.store, self.root_id, deck, sub_first, shadow, path)
+        QMessageBox.information(self, "Enviar para o Anki",
+                                f"{n} card(s) salvos. No Anki: Arquivo → Importar, escolha o arquivo e o tipo de nota "
+                                "“Básico”. O HTML com as cores já vem ativado.")
+        self.accept()

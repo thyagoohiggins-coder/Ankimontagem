@@ -71,12 +71,13 @@ class RichEditor(QTextEdit):
     """QTextEdit que cresce com o conteúdo, com atalhos e menu de contexto em português."""
 
     highlightRequested = Signal(object)      # editor
-    openChildRequested = Signal(str)         # id do sub-card
+    openChildRequested = Signal(str, QPoint)  # id do sub-card, posição na tela
     removeHighlightRequested = Signal(str)   # id do sub-card
     formatSelection = Signal(object)         # editor com seleção (mostrar barra)
     focusLost = Signal(object)
 
     plain_paste_default = True               # configuração global "Colar sem formatação"
+    hl_shadow = False                        # sombra vermelha atrás dos trechos destacados (opcional)
 
     # Última formatação escolhida, separada para FRONT (False) e BACK (True).
     # Vira o padrão do texto novo e é lembrada entre sessões.
@@ -157,6 +158,8 @@ class RichEditor(QTextEdit):
         self.blockSignals(True)
         if html:
             self.setHtml(html)
+            apply_highlight_style(self.document(), RichEditor.hl_shadow)
+            self.document().clearUndoRedoStacks()
         else:
             self.clear()
         self.document().setDefaultFont(default_font())
@@ -392,7 +395,7 @@ class RichEditor(QTextEdit):
         if self.is_back and e.modifiers() & Qt.ControlModifier and not self.textCursor().hasSelection():
             cid = self.child_at(e.position().toPoint())
             if cid:
-                self.openChildRequested.emit(cid)
+                self.openChildRequested.emit(cid, e.globalPosition().toPoint())
 
     def contextMenuEvent(self, e):
         m = QMenu(self)
@@ -412,7 +415,7 @@ class RichEditor(QTextEdit):
             hl = act("🖍  Destacar como desconhecido", lambda: self.highlightRequested.emit(self), "Ctrl+D", has_sel)
             f = hl.font(); f.setBold(True); hl.setFont(f)
         if child:
-            act("↪  Abrir sub-card deste trecho", lambda: self.openChildRequested.emit(child))
+            act("↪  Abrir sub-card deste trecho", lambda: self.openChildRequested.emit(child, e.globalPos()))
             act("✕  Remover este destaque", lambda: self.removeHighlightRequested.emit(child))
         if self.is_back or child:
             m.addSeparator()
@@ -451,12 +454,44 @@ def size_menu(parent: QWidget, on_pick, current: float) -> QMenu:
     return m
 
 
+def apply_highlight_style(doc, shadow: bool) -> None:
+    """Liga/desliga a sombra vermelha em todos os trechos destacados de um documento."""
+    ranges = []
+    block = doc.begin()
+    while block.isValid():
+        it = block.begin()
+        while not it.atEnd():
+            frag = it.fragment()
+            if frag.charFormat().anchorHref().startswith(HL_PREFIX):
+                ranges.append((frag.position(), frag.position() + frag.length()))
+            it += 1
+        block = block.next()
+    if not ranges:
+        return
+    undo = doc.isUndoRedoEnabled()
+    doc.setUndoRedoEnabled(False)
+    c = QTextCursor(doc)
+    for a, b in ranges:
+        c.setPosition(a); c.setPosition(b, QTextCursor.KeepAnchor)
+        fmt = c.charFormat()
+        if shadow:
+            fmt.setBackground(HL_BG)
+        else:
+            fmt.clearBackground()
+        fmt.setForeground(QColor(HL_RED))
+        fmt.setFontUnderline(True)
+        fmt.setUnderlineColor(QColor(HL_RED))
+        c.setCharFormat(fmt)
+    doc.setUndoRedoEnabled(undo)
+
+
 def highlight_format(href: str) -> QTextCharFormat:
     f = QTextCharFormat()
     f.setAnchor(True)
     f.setAnchorHref(href)
     f.setForeground(QColor(HL_RED))
-    f.setBackground(HL_BG)
+    if RichEditor.hl_shadow:
+        f.setBackground(HL_BG)
     f.setFontUnderline(True)
     f.setUnderlineColor(QColor(HL_RED))
     return f

@@ -1,0 +1,238 @@
+"""Envio dos cards para o Anki, mantendo cores e formatação.
+
+Dois caminhos:
+- AnkiConnect (complemento do Anki, código 2055492159): envia direto para o Anki aberto.
+- Arquivo .txt (HTML separado por tabulação) para importar em Arquivo → Importar.
+
+A ordem de envio define a ordem dos cards novos no Anki.
+"""
+from __future__ import annotations
+
+import html
+import json
+import re
+import urllib.error
+import urllib.request
+from html.parser import HTMLParser
+
+from .model import HL_PREFIX, Card, Store
+
+ANKI_URL = "http://127.0.0.1:8765"
+MODEL = "Montador de Flashcards"
+FIELDS = ["Frente", "Verso", "Origem", "Nivel"]
+TIFFANY = "#0ABAB5"
+HL_RED = "#e11d2e"
+
+CSS = """.card { font-family: "Segoe UI", Arial, sans-serif; font-size: 20px; color: #1f2933;
+  background: #ffffff; text-align: left; line-height: 1.45; }
+.verso { color: #0ABAB5; }
+.origem { color: #8a96a3; font-size: 13px; margin-bottom: 8px; }
+.origem b { color: #e11d2e; }
+.hl { color: #e11d2e; text-decoration: underline; text-decoration-color: #e11d2e; }
+"""
+FRONT_TMPL = """{{#Origem}}<div class="origem">Nível {{Nivel}} · trecho <b>{{Origem}}</b></div>{{/Origem}}
+<div class="frente">{{Frente}}</div>"""
+BACK_TMPL = """{{FrontSide}}
+<hr id="answer">
+<div class="verso">{{Verso}}</div>"""
+
+_KEEP_STYLES = {"color", "background-color", "font-weight", "font-style", "text-decoration",
+                "text-decoration-color", "font-size", "text-decoration-line", "text-underline-offset"}
+_BLOCK = {"p": "div", "li": "li", "ul": "ul", "ol": "ol"}
+_INLINE = {"span", "b", "strong", "i", "em", "u", "s", "sub", "sup"}
+
+
+def _clean_style(style: str, drop_bg: bool) -> str:
+    out = []
+    for part in style.split(";"):
+        if ":" not in part:
+            continue
+        k, v = part.split(":", 1)
+        k, v = k.strip().lower(), v.strip()
+        if k not in _KEEP_STYLES or not v:
+            continue
+        if drop_bg and k == "background-color":
+            continue
+        if k == "font-size" and v.replace(" ", "") in ("11.5pt", "9pt"):
+            continue   # tamanho padrão do programa: deixa o Anki usar o tamanho do card
+        out.append(f"{k}:{v}")
+    return "; ".join(out)
+
+
+class _QtHtmlToAnki(HTMLParser):
+    """Converte o HTML do Qt (documento completo) num fragmento limpo para o Anki."""
+
+    def __init__(self, shadow: bool) -> None:
+        super().__init__(convert_charrefs=True)
+        self.shadow = shadow
+        self.out: list[str] = []
+        self.stack: list[str] = []
+        self.in_body = False
+        self.skip = 0
+        self.empty_par = False
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag in ("head", "style", "title"):
+            self.skip += 1
+            return
+        if tag == "body":
+            self.in_body = True
+            return
+        if not self.in_body or self.skip:
+            return
+        style = a.get("style") or ""
+        if tag == "br":
+            self.out.append("<br>")
+            return
+        if tag == "a":
+            href = a.get("href") or ""
+            if href.startswith(HL_PREFIX):
+                bg = "; background-color: rgba(225,29,46,0.15)" if self.shadow else ""
+                self.out.append(f'<span class="hl" style="color:{HL_RED}; text-decoration: underline; '
+                                f'text-decoration-color:{HL_RED}{bg}">')
+            else:
+                self.out.append(f'<a href="{html.escape(href)}">')
+            self.stack.append("span" if href.startswith(HL_PREFIX) else "a")
+            return
+        if tag in _BLOCK:
+            self.empty_par = "-qt-paragraph-type:empty" in style
+            out_tag = _BLOCK[tag]
+            st = _clean_style(style, False)
+            self.out.append(f'<{out_tag} style="{st}">' if st else f"<{out_tag}>")
+            self.stack.append(out_tag)
+            return
+        if tag in _INLINE:
+            st = _clean_style(style, False)
+            self.out.append(f'<span style="{st}">' if st else "<span>")
+            self.stack.append("span")
+
+    def handle_endtag(self, tag):
+        if tag in ("head", "style", "title"):
+            self.skip = max(0, self.skip - 1)
+            return
+        if tag == "body":
+            self.in_body = False
+            return
+        if not self.in_body or self.skip:
+            return
+        if tag in _BLOCK or tag in _INLINE or tag == "a":
+            if self.stack:
+                self.out.append(f"</{self.stack.pop()}>")
+
+    def handle_data(self, data):
+        if self.in_body and not self.skip:
+            self.out.append(html.escape(data, quote=False))
+
+
+def qt_html_to_anki(qt_html: str, shadow: bool = False) -> str:
+    if not qt_html:
+        return ""
+    p = _QtHtmlToAnki(shadow)
+    p.in_body = "<body" not in qt_html.lower()     # front recém-criado é só texto
+    p.feed(qt_html)
+    p.close()
+    frag = "".join(p.out)
+    frag = re.sub(r"<span>(.*?)</span>", r"\1", frag, flags=re.S)
+    frag = frag.replace("<div><br></div>", "<br>")
+    return frag.strip()
+
+
+def ordered_cards(store: Store, root_id: str, subcards_first: bool) -> list[Card]:
+    order = store.study_order(root_id)          # último sub-card → raiz
+    return order if subcards_first else list(reversed(order))
+
+
+def note_fields(store: Store, card: Card, shadow: bool) -> dict:
+    d = store.depth(card.id)
+    return {
+        "Frente": qt_html_to_anki(card.front, shadow),
+        "Verso": qt_html_to_anki(card.back, shadow),
+        "Origem": html.escape(card.snippet) if d else "",
+        "Nivel": str(d) if d else "",
+    }
+
+
+# ====================================================================== AnkiConnect
+class AnkiError(Exception):
+    pass
+
+
+def invoke(action: str, url: str = ANKI_URL, timeout: float = 8.0, **params):
+    body = json.dumps({"action": action, "version": 6, "params": params}).encode("utf-8")
+    req = urllib.request.Request(url, body, {"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            resp = json.loads(r.read().decode("utf-8"))
+    except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as exc:
+        raise AnkiError(
+            "Não foi possível conectar ao Anki. Abra o Anki e confira se o complemento "
+            "AnkiConnect (código 2055492159) está instalado.") from exc
+    if not isinstance(resp, dict) or "result" not in resp:
+        raise AnkiError("Resposta inesperada do AnkiConnect.")
+    if resp.get("error"):
+        raise AnkiError(str(resp["error"]))
+    return resp["result"]
+
+
+def ensure_model(url: str = ANKI_URL) -> None:
+    if MODEL in invoke("modelNames", url):
+        return
+    invoke("createModel", url, modelName=MODEL, inOrderFields=FIELDS, css=CSS,
+           cardTemplates=[{"Name": "Cartão 1", "Front": FRONT_TMPL, "Back": BACK_TMPL}])
+
+
+def send_to_anki(store: Store, root_id: str, deck: str, subcards_first: bool, shadow: bool,
+                 url: str = ANKI_URL) -> tuple[int, int]:
+    """Envia os cards da árvore. Cards já enviados são atualizados. Retorna (novos, atualizados)."""
+    ensure_model(url)
+    invoke("createDeck", url, deck=deck)
+    cards = ordered_cards(store, root_id, subcards_first)
+
+    known = [c.anki_note_id for c in cards if c.anki_note_id]
+    alive = set()
+    if known:
+        info = invoke("notesInfo", url, notes=known)
+        alive = {n["noteId"] for n in info if n and n.get("noteId")}
+
+    updated = 0
+    new_cards: list[Card] = []
+    for c in cards:
+        if c.anki_note_id in alive:
+            invoke("updateNoteFields", url, note={"id": c.anki_note_id, "fields": note_fields(store, c, shadow)})
+            invoke("changeDeck", url, cards=invoke("findCards", url, query=f"nid:{c.anki_note_id}"), deck=deck)
+            updated += 1
+        else:
+            new_cards.append(c)
+
+    if new_cards:
+        notes = [{
+            "deckName": deck, "modelName": MODEL, "fields": note_fields(store, c, shadow),
+            "tags": ["montador-flashcards"],
+            "options": {"allowDuplicate": True},
+        } for c in new_cards]
+        ids = invoke("addNotes", url, notes=notes)      # na ordem da lista = ordem dos cards novos
+        for c, nid in zip(new_cards, ids):
+            c.anki_note_id = nid
+    return len(new_cards), updated
+
+
+# ====================================================================== arquivo
+def export_txt(store: Store, root_id: str, deck: str, subcards_first: bool, shadow: bool, path: str) -> int:
+    """Arquivo para Arquivo → Importar no Anki (tipo de nota Básico: Frente, Verso)."""
+    def cell(s: str) -> str:
+        return s.replace("\t", " ").replace("\r", "").replace("\n", " ")
+
+    lines = ["#separator:tab", "#html:true", f"#deck:{deck}", "#tags column:3"]
+    cards = ordered_cards(store, root_id, subcards_first)
+    for c in cards:
+        f = note_fields(store, c, shadow)
+        front = f["Frente"]
+        if f["Origem"]:
+            front = (f'<div style="color:#8a96a3; font-size:13px">Nível {f["Nivel"]} · trecho '
+                     f'<b style="color:{HL_RED}">{f["Origem"]}</b></div>') + front
+        back = f'<div style="color:{TIFFANY}">{f["Verso"]}</div>'
+        lines.append("\t".join([cell(front), cell(back), "montador-flashcards"]))
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+    return len(cards)

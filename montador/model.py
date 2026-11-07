@@ -23,6 +23,7 @@ class Card:
     front: str = ""
     back: str = ""
     snippet: str = ""          # trecho do back do card pai que originou este card
+    anki_note_id: int | None = None   # nota correspondente no Anki (para atualizar em vez de duplicar)
     created: float = field(default_factory=time.time)
 
 

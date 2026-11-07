@@ -46,6 +46,7 @@ QTextEdit#backEditor, QTextBrowser#backView { color: #0ABAB5; }
 #formatBar QToolButton#hlButton { color: #e11d2e; }
 #formatBar QToolButton#hlButton:hover { background: #fde4e6; }
 
+#cardPopup { background: white; border: 1px solid #b9c6d0; border-radius: 10px; }
 #emptyMsg { color: #4b5763; font-size: 11pt; padding: 20px; }
 #studyCard { background: white; border: 1px solid #e1e6eb; border-radius: 14px; }
 #studyProgress { font-weight: 700; color: #4b5763; }

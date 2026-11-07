@@ -24,6 +24,21 @@ Na página de [Releases](../../releases), baixe:
 5. **▶ Estudar** (F5) mostra os cards do **último sub-card adicionado até o card raiz**.
    Espaço vira, ← → navegam, + / − mudam o tamanho do texto, Esc volta.
 
+### Pop-ups de sub-cards
+- **Ctrl+clique** num trecho vermelho, ou botão direito → *Abrir sub-card deste trecho*, abre o sub-card num pop-up
+  logo abaixo, como um menu.
+- No pop-up, clicar num trecho vermelho abre o próximo pop-up **descendo**; **▲ Card pai** (ou ↑) abre o card
+  anterior **subindo** até a raiz. Para começar de um sub-card e voltar: ⋯ do card → *Ver em pop-ups*.
+- **Enter** ou **✎ Editar** abre o card na linha do tempo; **Esc** ou clicar fora fecha.
+
+### Enviar para o Anki
+- ☰ → **Enviar para o Anki…** (Ctrl+E) envia o card raiz e todos os sub-cards com as mesmas cores e formatação.
+- Escolha a ordem: **sub-cards primeiro, do último até o card raiz** (padrão) ou o card raiz primeiro.
+- **Direto no Anki:** com o Anki aberto e o complemento **AnkiConnect** (código `2055492159`). É criado o tipo de
+  nota "Montador de Flashcards" (campos Frente, Verso, Origem, Nível) e o back fica em azul Tiffany.
+  Reenviar atualiza os cards já enviados, sem duplicar.
+- **Sem AnkiConnect:** *Salvar arquivo…* gera um `.txt` para importar em Arquivo → Importar (tipo Básico).
+
 ### Texto
 - A barra de formatação só aparece quando há texto selecionado: negrito, itálico, sublinhado, tachado,
   **cor da fonte**, **cor do sublinhado**, tamanho e limpar formatação.
@@ -36,6 +51,8 @@ Na página de [Releases](../../releases), baixe:
 - **Colar sem formatação**: ligado por padrão no Ctrl+V (menu ☰). Ctrl+Shift+V sempre cola sem formatação;
   o botão direito também oferece "Colar com formatação".
 - O botão direito abre um menu completo em português.
+- O trecho destacado fica com texto e sublinhado vermelhos. A **sombra vermelha** atrás dele é opcional:
+  ☰ → *Sombra vermelha nos trechos destacados* (fica salvo).
 
 ### Tela dividida
 - A janela funciona a partir de 360 px de largura.
