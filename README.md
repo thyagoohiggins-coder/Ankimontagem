@@ -1,48 +1,50 @@
 # Montador de Flashcards
 
-Aplicativo web (HTML + CSS + JavaScript puro, sem instalação) para montar flashcards com **aprofundamento por trechos destacados**.
+Programa nativo para Windows (Python + Qt) para montar flashcards com **aprofundamento por trechos destacados**.
+Pensado para estudo rápido em **tela dividida** ao lado do navegador: tudo fica numa coluna só, em forma de linha do tempo.
 
-## Programa para Windows
+## Baixar
+Na página de [Releases](../../releases), baixe:
+- **MontadorDeFlashcards-Setup-x.y.z.exe**: instalador, com atalho no menu Iniciar e na área de trabalho.
+- **MontadorDeFlashcards-portatil-x.y.z.exe**: versão portátil, abre sem instalar.
 
-O montador é um programa de desktop (Electron) com duas versões:
-
-- **`Montador de Flashcards Setup 1.0.0.exe`**: instalador. Cria atalho na área de trabalho e no menu Iniciar.
-- **`MontadorDeFlashcards-portatil-1.0.0.exe`**: versão portátil. Basta dar dois cliques, sem instalar.
-
-### Onde baixar
-A cada push, o GitHub Actions gera os dois `.exe`: aba **Actions** → *Gerar programa Windows* →
-última execução → artefato **Montador-de-Flashcards-Windows**.
-
-> Como o programa não tem assinatura digital paga, o Windows pode mostrar "O Windows protegeu o computador".
-> Clique em **Mais informações → Executar assim mesmo**.
-
-### Gerar o .exe você mesmo (no Windows)
-```bash
-npm install
-npm run dist:win
-```
-Os arquivos ficam na pasta `dist/`. Para só abrir o programa sem gerar instalador: `npm start`.
-
-Os cards ficam salvos automaticamente no próprio programa. Use **Exportar/Importar** para fazer backup em JSON.
-Também dá para abrir o `index.html` direto no navegador, sem instalar nada.
+> O programa não tem assinatura digital. Se aparecer "O Windows protegeu o computador",
+> clique em **Mais informações → Executar assim mesmo**.
 
 ## Como usar
+1. **+ Novo** cria um card raiz. Escreva o **FRONT**, aperte **Tab** e escreva o **BACK**
+   (o texto do back sai em **azul Tiffany**).
+2. No BACK, selecione um trecho que você não conhece e aperte **Ctrl+D** (ou clique em **🖍 Destacar**
+   na barra que aparece ao selecionar, ou use o botão direito). O trecho fica **vermelho** e um novo card
+   aparece na linha do tempo. Destaque quantos trechos quiser.
+3. Clique num card da linha do tempo (ou **Alt+↓**) para abri-lo e destacar trechos no BACK dele.
+   Não há limite de profundidade, e cada trecho segue seu próprio ramo.
+4. Cada card mostra quantos trechos foram destacados nele. No topo aparece o total a partir da raiz;
+   clique em **resumo ›** (ou **Ctrl+R**) para ver o detalhamento.
+5. **▶ Estudar** (F5) mostra os cards do **último sub-card adicionado até o card raiz**.
+   Espaço vira, ← → navegam, + / − mudam o tamanho do texto, Esc volta.
 
-1. Clique em **+ Novo card raiz** e preencha o **FRONT** e o **BACK**.
-   - Os dois lados têm formatação: negrito, itálico, sublinhado, tachado, tamanho, **cor da fonte**, **cor do sublinhado** e listas.
-   - O texto do BACK vem em **azul Tiffany** (`#0ABAB5`) por padrão.
-2. No BACK, selecione um trecho que você não conhece e clique em **🖍 Destacar seleção**
-   (ou ligue o **Modo destaque** e apenas selecione o texto com o mouse).
-   - O trecho fica **vermelho** e um novo par FRONT/BACK (sub-card) aparece logo abaixo.
-   - Você pode destacar quantos trechos quiser em cada BACK.
-3. Clique em **Aprofundar →** num sub-card para destacar trechos no BACK dele, e assim por diante, sem limite de profundidade.
-   Cada trecho da raiz pode ter sua própria ramificação independente.
-4. Cada card mostra quantos trechos foram destacados nele; a árvore lateral mostra a contagem de todos.
-5. Clique em **✔ Concluir aprofundamento** para ver quantos trechos foram destacados a partir do card raiz,
-   o detalhamento por card e a ordem de estudo.
-6. **▶ Estudar**: os cards são mostrados do **último sub-card adicionado para o primeiro**, terminando no card raiz.
-   Atalhos: `Espaço` vira, `←`/`→` navegam, `Esc` sai.
+### Texto
+- A barra de formatação só aparece quando há texto selecionado: negrito, itálico, sublinhado, tachado,
+  **cor da fonte**, **cor do sublinhado**, tamanho e limpar formatação.
+- **Colar sem formatação**: ligado por padrão no Ctrl+V (menu ☰). Ctrl+Shift+V sempre cola sem formatação;
+  o botão direito também oferece "Colar com formatação".
+- O botão direito abre um menu completo em português.
 
-Outros detalhes:
-- Clicar num trecho vermelho leva ao sub-card correspondente.
-- **🗑 Remover destaque** remove o trecho destacado e o sub-card (com seus descendentes). Apagar o trecho vermelho do texto tem o mesmo efeito.
+### Tela dividida
+- A janela funciona a partir de 360 px de largura.
+- Menu ☰ → **Fixar janela sempre no topo**, para estudar com o Chrome aberto.
+
+Os cards ficam salvos automaticamente em `%APPDATA%\MontadorFlashcards\Montador de Flashcards\flashcards.json`.
+Use ☰ → Exportar/Importar para backup.
+
+## Rodar a partir do código
+```bash
+pip install -r requirements.txt
+```
+```bash
+python main.py
+```
+Testes: `python -m unittest discover -s tests`. Os `.exe` são gerados pelo GitHub Actions
+(`.github/workflows/build-windows.yml`). Para publicar uma release, rode o workflow manualmente
+informando a tag (ex.: `v2.1.0`) depois de mudar a versão em `montador/__init__.py`.

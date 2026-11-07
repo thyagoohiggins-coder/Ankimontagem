@@ -1,17 +1,17 @@
-## Montador de Flashcards para Windows
+## Montador de Flashcards — programa nativo para Windows
 
-Baixe um dos arquivos abaixo, em **Assets**:
+Baixe em **Assets**:
+- **MontadorDeFlashcards-Setup-x.y.z.exe**: instalador (menu Iniciar e atalho na área de trabalho).
+- **MontadorDeFlashcards-portatil-x.y.z.exe**: versão portátil, abre sem instalar.
 
-- **Montador.de.Flashcards.Setup.x.y.z.exe**: instalador, com atalho na área de trabalho e no menu Iniciar.
-- **MontadorDeFlashcards-portatil-x.y.z.exe**: versão portátil, abre com dois cliques e não precisa instalar.
-
-### Recursos
-- Front e back com formatação de texto, cor de fonte e cor de sublinhado (o back vem em azul Tiffany por padrão).
-- Selecione no back um trecho que você não conhece: ele fica vermelho e gera um novo sub-card.
-- Aprofundamento sem limite de níveis, com ramificações independentes a partir da raiz.
-- Contagem de trechos destacados em cada card e no total a partir do card raiz.
-- Modo de estudo do último sub-card adicionado até o card raiz.
-- Exportar e importar em JSON.
+### Novidades da 2.0
+- Reescrito como programa nativo (Python + Qt), sem HTML.
+- Cards em **linha do tempo** numa coluna só, ideal para tela dividida com o navegador. Opção de fixar a janela no topo.
+- Editor mais limpo: um card aberto por vez, e a barra de formatação só aparece ao selecionar texto.
+- **Colar sem formatação** (padrão no Ctrl+V, e sempre no Ctrl+Shift+V).
+- Menu do botão direito funcionando, em português, com destaque, cores e opções de colar.
+- Texto do back em **azul Tiffany** também ao digitar e ao colar.
+- Atalhos para montar rápido: Ctrl+D destaca, Alt+↓/↑ navega na linha do tempo, F5 estuda.
 
 > O programa não tem assinatura digital. Se o Windows mostrar "O Windows protegeu o computador",
 > clique em **Mais informações → Executar assim mesmo**.

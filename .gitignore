@@ -1,2 +1,7 @@
-node_modules/
+__pycache__/
+*.pyc
+build/*.spec
+*.spec
 dist/
+build/MontadorDeFlashcards*/
+pyi-build/
