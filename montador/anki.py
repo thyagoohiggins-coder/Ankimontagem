@@ -29,7 +29,7 @@ CSS = """.card { font-family: "Segoe UI", Arial, sans-serif; font-size: 11.5pt; 
 .verso { color: #0ABAB5; }
 .origem { color: #8a96a3; font-size: 13px; margin-bottom: 8px; }
 .origem b { color: #e11d2e; }
-.hl { color: #e11d2e; text-decoration: none; border-bottom: 1.5px solid #e11d2e; padding-bottom: 0; }
+.hl { color: #e11d2e; }
 """
 FRONT_TMPL = """<div class="frente">{{Frente}}</div>"""
 BACK_TMPL = """{{FrontSide}}
@@ -71,6 +71,12 @@ class _QtHtmlToAnki(HTMLParser):
         self.skip = 0
         self.empty_par = False
         self.hl_depth = 0          # dentro de um trecho destacado: um único sublinhado vermelho
+        self.hl_open: list[list] = []
+
+    def _hl_style(self) -> str:
+        bg = "; background-color:rgba(225,29,46,0.15)" if self.shadow else ""
+        return (f"color:{HL_RED}; text-decoration:underline; text-decoration-color:{HL_RED}; "
+                f"text-decoration-thickness:1.5px; text-underline-offset:2px{bg}")
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
@@ -89,9 +95,10 @@ class _QtHtmlToAnki(HTMLParser):
         if tag == "a":
             href = a.get("href") or ""
             if href.startswith(HL_PREFIX):
-                bg = "; background-color: rgba(225,29,46,0.15)" if self.shadow else ""
-                # borda fina em vez de text-decoration: o Anki desenha sempre igual (sem a linha grossa)
-                self.out.append(f'<span class="hl" style="color:{HL_RED}; border-bottom:1.5px solid {HL_RED}{bg}">')
+                # O sublinhado vai no MESMO elemento que tem o texto (e o tamanho da fonte), com todo o estilo
+                # inline: fica colado à palavra, fino, e não depende do CSS do tipo de nota.
+                self.hl_open.append([len(self.out), False])
+                self.out.append('<span class="hl">')
                 self.hl_depth += 1
                 self.stack.append("/hl")
                 return
@@ -109,8 +116,10 @@ class _QtHtmlToAnki(HTMLParser):
         if tag in _INLINE:
             st = _clean_style(style, False)
             if self.hl_depth:
-                st = "; ".join(x for x in st.split("; ")
-                               if x and not x.startswith(("text-decoration", "color", "background-color")))
+                st = "; ".join([x for x in st.split("; ")
+                                if x and not x.startswith(("text-decoration", "color", "background-color",
+                                                           "text-underline"))] + [self._hl_style()])
+                self.hl_open[-1][1] = True
             self.out.append(f'<span style="{st}">' if st else "<span>")
             self.stack.append("span")
 
@@ -128,6 +137,9 @@ class _QtHtmlToAnki(HTMLParser):
                 t = self.stack.pop()
                 if t == "/hl":
                     self.hl_depth -= 1
+                    idx, has_inner = self.hl_open.pop()
+                    if not has_inner:   # texto direto dentro do destaque: o estilo vai no próprio span
+                        self.out[idx] = f'<span class="hl" style="{self._hl_style()}">'
                     t = "span"
                 self.out.append(f"</{t}>")
 
@@ -273,7 +285,12 @@ def export_apkg(store: Store, root_id: str, deck: str, subcards_first: bool, sha
         fields=[{"name": f} for f in FIELDS],
         templates=[{"name": "Cartão 1", "qfmt": FRONT_TMPL, "afmt": BACK_TMPL}],
         css=CSS)
-    d = genanki.Deck(_deck_id(deck), deck)
+    deck_id = _deck_id(deck)
+    try:   # baralho que já existe no Anki: usa o id real para os cards entrarem nele
+        deck_id = int(invoke("deckNamesAndIds", timeout=1.5).get(deck, deck_id))
+    except (AnkiError, AttributeError, TypeError, ValueError):
+        pass   # sem AnkiConnect: o Anki junta pelo nome do baralho
+    d = genanki.Deck(deck_id, deck)
     cards = ordered_cards(store, root_id, subcards_first)
     for i, c in enumerate(cards, 1):
         f = note_fields(store, c, shadow)

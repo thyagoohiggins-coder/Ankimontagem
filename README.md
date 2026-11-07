@@ -47,6 +47,8 @@ Na página de [Releases](../../releases), baixe:
 
 ### Enviar para o Anki
 - ☰ → **Enviar para o Anki…** (Ctrl+E) envia o card raiz e todos os sub-cards com as mesmas cores e formatação.
+- **Baralho:** escolha um baralho que já existe no Anki (a lista vem do AnkiConnect; ↻ atualiza) ou digite um
+  nome novo. O último usado fica lembrado. No `.apkg`, usar o nome de um baralho existente faz os cards entrarem nele.
 - Escolha a ordem: **sub-cards primeiro, do último até o card raiz** (padrão) ou o card raiz primeiro.
 - **Direto no Anki:** com o Anki aberto e o complemento **AnkiConnect** (código `2055492159`). É criado o tipo de
   nota "Montador de Flashcards" (campos Frente e Verso) e o back fica em azul Tiffany.

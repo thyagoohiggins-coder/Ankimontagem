@@ -954,9 +954,26 @@ class AnkiDialog(QDialog):
         title = plain(s.get(root_id).front, 50) or "(sem título)"
         lay.addWidget(QLabel(f"<b>{n} card(s)</b> do card raiz “{html.escape(title)}”, com as mesmas cores e formatação."))
 
-        lay.addWidget(QLabel("Baralho no Anki:"))
-        self.deck = QLineEdit(settings.get_json("anki/deck_prefix", "Montador") + "::" + title.replace("::", " "))
-        lay.addWidget(self.deck)
+        lay.addWidget(QLabel("Baralho no Anki (escolha um que já existe ou digite um nome novo):"))
+        row = QHBoxLayout()
+        self.deck = QComboBox()
+        self.deck.setEditable(True)
+        self.deck.setInsertPolicy(QComboBox.NoInsert)
+        self.deck.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.deck.setMinimumContentsLength(18)
+        row.addWidget(self.deck, 1)
+        refresh = QPushButton("↻", objectName="ghost")
+        refresh.setToolTip("Buscar os baralhos do Anki (precisa do Anki aberto com o AnkiConnect)")
+        refresh.setFixedWidth(36)
+        refresh.clicked.connect(lambda: self._load_decks(True))
+        row.addWidget(refresh)
+        lay.addLayout(row)
+        self.deck_note = QLabel("", objectName="muted")
+        self.deck_note.setWordWrap(True)
+        lay.addWidget(self.deck_note)
+        default = settings.get_json("anki/last_deck", "") or ("Montador::" + title.replace("::", " "))
+        self._load_decks(False)
+        self.deck.setEditText(default)
 
         lay.addWidget(QLabel("Ordem dos cards novos no Anki:"))
         self.sub_first = QRadioButton("Sub-cards primeiro: do último sub-card até o card raiz")
@@ -991,11 +1008,34 @@ class AnkiDialog(QDialog):
         btns.addWidget(send)
         lay.addLayout(btns)
 
+    def _load_decks(self, user_asked: bool) -> None:
+        """Lista os baralhos do Anki (AnkiConnect) e os usados antes neste programa."""
+        current = self.deck.currentText()
+        names: list[str] = []
+        try:
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            names = sorted(anki.invoke("deckNames", timeout=1.5 if not user_asked else 5),
+                           key=str.lower)
+            self.deck_note.setText(f"{len(names)} baralho(s) encontrados no Anki.")
+        except anki.AnkiError:
+            self.deck_note.setText("Para listar os seus baralhos, abra o Anki com o AnkiConnect e clique em ↻. "
+                                   "No arquivo .apkg, use o mesmo nome de um baralho existente para os cards "
+                                   "entrarem nele.")
+        finally:
+            QApplication.restoreOverrideCursor()
+        recent = [d for d in settings.get_json("anki/recent_decks", []) if isinstance(d, str)]
+        self.deck.clear()
+        for d in recent + [n for n in names if n not in recent]:
+            self.deck.addItem(d)
+        if current:
+            self.deck.setEditText(current)
+
     def _opts(self):
         settings.set_value("anki/subcards_first", 1 if self.sub_first.isChecked() else 0)
-        deck = self.deck.text().strip() or "Montador"
-        if "::" in deck:
-            settings.set_json("anki/deck_prefix", deck.split("::")[0])
+        deck = self.deck.currentText().strip() or "Montador"
+        settings.set_json("anki/last_deck", deck)
+        recent = [deck] + [d for d in settings.get_json("anki/recent_decks", []) if d != deck]
+        settings.set_json("anki/recent_decks", recent[:10])
         return deck, self.sub_first.isChecked(), RichEditor.hl_shadow
 
     def send(self):

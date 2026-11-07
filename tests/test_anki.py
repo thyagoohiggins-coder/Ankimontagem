@@ -27,8 +27,8 @@ class AnkiTest(unittest.TestCase):
     def test_highlight_has_single_underline(self):
         out = anki.qt_html_to_anki(QT_HTML)
         inner = out.split('class="hl"', 1)[1].split("</span>", 1)[0]
-        self.assertEqual(inner.count("text-decoration"), 0)   # sem sublinhados empilhados
-        self.assertEqual(inner.count("border-bottom"), 1)     # uma linha fina só
+        self.assertEqual(inner.count("text-decoration:underline"), 1)   # um único sublinhado
+        self.assertNotIn("border-bottom", inner)
         self.assertNotIn("Nível", anki.FRONT_TMPL)
 
     def test_plain_front(self):
